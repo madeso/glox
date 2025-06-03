@@ -1,5 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using System.Collections.Immutable;
+using Glox.Registry;
+using System.Xml.Linq;
 
 namespace Glox.Html;
 
@@ -7,7 +9,7 @@ public record Page(string FileName, string Title, string Body);
 
 public static class Writer
 {
-    private static string Encode(string s) => System.Net.WebUtility.HtmlEncode(s);
+    internal static string Encode(string s) => System.Net.WebUtility.HtmlEncode(s);
 
     private static void WritePage(DirectoryInfo folder, Page page, string footer)
     {
@@ -53,23 +55,27 @@ public static class Writer
             """
         );
 
+    private static string LinkToGroupDef(GroupDef g) => $"<a href=\"{GroupDefLink(g)}.html\">{Encode(g.Name)}</a>";
     private static Page GroupPage(Registry.GroupDef g) =>
         new Page(
-            FileName: $"group_{g.Name}",
+            FileName: GroupDefLink(g),
             Title: $"Group: {g.Name}",
             Body: $"""
                 <ul>
                     <li><b>Name:</b> {Encode(g.Name)}</li>
                     <li><b>Enums:</b>
-                        <ul>
-                            {string.Join("", g.Enums.Select(e => $"<li>{Encode(e.Name)}</li>"))}
-                        </ul>
+                        {EnumValueList(g.Enums)}
                     </li>
                 </ul>
             """
         );
 
-    private static Page EnumsPage(Registry.EnumType e) =>
+    private static string GroupDefLink(GroupDef g)
+    {
+        return $"group_{g.Name}";
+    }
+
+    private static Page EnumBlocksPage(Registry.EnumBlock e) =>
         new Page(
             FileName: $"enums_{e.Namespace ?? "none"}_{e.Index}",
             Title: $"Enums: {e.Namespace ?? "none"}",
@@ -83,14 +89,7 @@ public static class Writer
                     <li><b>End:</b> {Encode(e.End ?? "")}</li>
                     <li><b>Group:</b> {Encode(e.Group ?? "")}</li>
                     <li><b>Enums:</b>
-                        <ul>
-                            {string.Join("", e.Enums.Select(ev =>
-                                $"<li>{Encode(ev.Name)} = {Encode(ev.Value ?? "")} " +
-                                $"<small>Api: {Encode(ev.Api ?? "")}, Type: {Encode(ev.Type ?? "")}, " +
-                                $"Group: {Encode(ev.Group ?? "")}, Alias: {Encode(ev.Alias ?? "")}, " +
-                                $"Comment: {Encode(ev.Comment ?? "")}</small></li>"
-                            ))}
-                        </ul>
+                        {EnumValueList(e.Enums)}
                     </li>
                     <li><b>Unused:</b>
                         <ul>
@@ -102,6 +101,20 @@ public static class Writer
                 </ul>
             """
         );
+
+    private static string EnumValueList(IEnumerable<EnumValue> eEnums)
+    {
+        return $"""
+                <ul>
+                    {string.Join("", eEnums.Select(ev =>
+                        $"<li>{Encode(ev.Name)} = {Encode(ev.Value ?? "")} " +
+                        $"<small>Api: {Encode(ev.Api ?? "")}, Type: {Encode(ev.Type ?? "")}, " +
+                        $"Group: {Encode(string.Join(", ", ev.GroupRefs))}, Alias: {Encode(ev.Alias ?? "")}, " +
+                        $"Comment: {Encode(ev.Comment ?? "")}</small></li>"
+                    ))}
+                </ul>
+                """;
+    }
 
     private static Page CommandPage(Registry.CommandDef c) =>
         new Page(
@@ -127,9 +140,7 @@ public static class Writer
                     </li>
                     <li><b>Params:</b>
                         <ul>
-                            {string.Join("", c.Params.Select(p =>
-                                $"<li>Name: {Encode(p.Name)}, Group: {Encode(p.Group ?? "")}, Kind: {Encode(p.Kind ?? "")}, Len: {Encode(p.Len ?? "")}, Class: {Encode(p.Class ?? "")}, Ptype: {Encode(p.Ptype ?? "")}, ApiEntry: {Encode(p.ApiEntry ?? "")}, Body: {Encode(string.Join(" ", p.Body))}</li>"
-                            ))}
+                            {string.Join("", c.Params.Select(ParamDefToHtml))}
                         </ul>
                     </li>
                     <li><b>Glx:</b>
@@ -138,6 +149,21 @@ public static class Writer
                 </ul>
             """
         );
+
+    private static string ParamDefToHtml(ParamDef p)
+    {
+        var props = new PropsBuilder()
+            .Add("Name", p.Name)
+            .Add("Group", p.Group, LinkToGroupDef)
+            .Add("Kind", p.Kind)
+            .Add("Len", p.Len)
+            .Add("Class", p.Class)
+            .Add("Ptype", p.Ptype)
+            .Add("ApiEntry", p.ApiEntry)
+            .Add("Body", string.Join(" ", p.Body))
+            .Build();
+        return $"<li>{props}</li>";
+    }
 
     private static Page FeaturePage(Registry.FeatureDef f) =>
         new Page(
@@ -151,18 +177,48 @@ public static class Writer
                     <li><b>Number:</b> {Encode(f.Number)}</li>
                     <li><b>Comment:</b> {Encode(f.Comment ?? "")}</li>
                     <li><b>Require:</b>
-                        <ul>
-                            {string.Join("", f.Require.Select(r => $"<li>Profile: {Encode(r.Profile ?? "")}, Api: {Encode(r.Api ?? "")}, Comment: {Encode(r.Comment ?? "")}</li>"))}
-                        </ul>
+                        {InterfaceList(f.Require)}
                     </li>
                     <li><b>Remove:</b>
-                        <ul>
-                            {string.Join("", f.Remove.Select(r => $"<li>Profile: {Encode(r.Profile ?? "")}, Api: {Encode(r.Api ?? "")}, Comment: {Encode(r.Comment ?? "")}</li>"))}
-                        </ul>
+                        {InterfaceList(f.Remove)}
                     </li>
                 </ul>
             """
         );
+
+    private static string InterfaceList(IEnumerable<InterfaceDef> list)
+    {
+        var body = string.Join("", list.Select(InterfaceToHtml));
+        return $"<ul>{body}</ul>";
+    }
+
+    private static string InterfaceToHtml(InterfaceDef r)
+    {
+        var props = new PropsBuilder()
+            .Add("Profile", r.Profile)
+            .Add("Api", r.Api)
+            .Add("Comment", r.Comment)
+            .AddArray("Enums", r.Enums, ResolveEnum)
+            .AddArray("Commands", r.Commands, ResolveCommands)
+            .AddArray("Types", r.Types, ResolveTypes)
+            .Build();
+        return $"<li>{props}</li>";
+    }
+
+    private static string ResolveTypes(RequireType arg) => new PropsBuilder()
+        .Add(arg.Name)
+        .Add("Comment", arg.Comment)
+        .Build();
+
+    private static string ResolveCommands(RequireCommand arg) => new PropsBuilder()
+        .Add(arg.Name)
+        .Add("Comment", arg.Comment)
+        .Build();
+
+    private static string ResolveEnum(RequireEnum arg) => new PropsBuilder()
+        .Add(arg.Name)
+        .Add("Comment", arg.Comment)
+        .Build();
 
     private static Page ExtensionPage(Registry.ExtensionDef ext) =>
         new Page(
@@ -175,14 +231,10 @@ public static class Writer
                     <li><b>Protect:</b> {Encode(ext.Protect ?? "")}</li>
                     <li><b>Comment:</b> {Encode(ext.Comment ?? "")}</li>
                     <li><b>Require:</b>
-                        <ul>
-                            {string.Join("", ext.Require.Select(r => $"<li>Profile: {Encode(r.Profile ?? "")}, Api: {Encode(r.Api ?? "")}, Comment: {Encode(r.Comment ?? "")}</li>"))}
-                        </ul>
+                        {InterfaceList(ext.Require)}
                     </li>
                     <li><b>Remove:</b>
-                        <ul>
-                            {string.Join("", ext.Remove.Select(r => $"<li>Profile: {Encode(r.Profile ?? "")}, Api: {Encode(r.Api ?? "")}, Comment: {Encode(r.Comment ?? "")}</li>"))}
-                        </ul>
+                        {InterfaceList(ext.Remove)}
                     </li>
                 </ul>
             """
@@ -214,21 +266,21 @@ public static class Writer
     {
         var typePages = registry.Types.Select(TypePage).ToImmutableArray();
         var kindPages = registry.Kinds.Select(KindPage).ToImmutableArray();
-        var groupPages = registry.Groups.Select(GroupPage).ToImmutableArray();
-        var enumsPages = registry.Enums.Select(EnumsPage).ToImmutableArray();
+        var groupPages = registry.Groups.Values.Select(GroupPage).ToImmutableArray();
+        var enumBlocks = registry.EnumBlocks.Select(EnumBlocksPage).ToImmutableArray();
         var commandPages = registry.Commands.Select(CommandPage).ToImmutableArray();
         var featurePages = registry.Features.Select(FeaturePage).ToImmutableArray();
         var extensionPages = registry.Extensions.Select(ExtensionPage).ToImmutableArray();
 
         var listingPages = new[]
         {
-            CreateListingPage("types", typePages),
-            CreateListingPage("kinds", kindPages),
-            CreateListingPage("groups", groupPages),
-            CreateListingPage("enums", enumsPages),
-            CreateListingPage("commands", commandPages),
-            CreateListingPage("features", featurePages),
-            CreateListingPage("extensions", extensionPages)
+            CreateListingPage("Types", typePages),
+            CreateListingPage("Kinds", kindPages),
+            CreateListingPage("Groups", groupPages),
+            CreateListingPage("Enums blocks", enumBlocks),
+            CreateListingPage("Commands", commandPages),
+            CreateListingPage("Features", featurePages),
+            CreateListingPage("Extensions", extensionPages)
         };
 
         var footer = CreateHtmlFooter(listingPages);
@@ -243,7 +295,7 @@ public static class Writer
             ..typePages
                 .Concat(kindPages)
                 .Concat(groupPages)
-                .Concat(enumsPages)
+                .Concat(enumBlocks)
                 .Concat(commandPages)
                 .Concat(featurePages)
                 .Concat(extensionPages)
@@ -259,5 +311,49 @@ public static class Writer
         {
             WritePage(folder, p, footer);
         }
+    }
+}
+
+internal class PropsBuilder
+{
+    private readonly List<string> _allProps = new();
+
+    public PropsBuilder Add(string? value)
+    {
+        if (value != null)
+        {
+            _allProps.Add($"{Writer.Encode(value)}");
+        }
+        return this;
+    }
+
+    public PropsBuilder Add(string name, string? value)
+    {
+        if(value != null) {
+            _allProps.Add($"{Writer.Encode(name)}: {Writer.Encode(value)}");
+        }
+        return this;
+    }
+
+    public PropsBuilder Add<T>(string name, T? value, Func<T, string> converter) where T: class
+    {
+        if (value != null)
+        {
+            _allProps.Add($"{Writer.Encode(name)}: {converter(value)}");
+        }
+        return this;
+    }
+
+    public string Build() => string.Join(", ", _allProps);
+
+    public PropsBuilder AddArray<T>(string name, ImmutableArray<T> list, Func<T, string> resolve)
+    {
+        var r = list.Select(resolve).ToImmutableArray();
+        if(r.Length > 0)
+        {
+            var value = string.Join(", ", r);
+            _allProps.Add($"{Writer.Encode(name)}: {value}");
+        }
+        return this;
     }
 }
