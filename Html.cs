@@ -166,38 +166,25 @@ internal static class Writer
             new Page(
                 FileName: $"feature_{f.Name}",
                 Title: $"Feature: {f.Name}",
-                Body: $"""
-                <ul>
-                    <li><b>API:</b> {Encode(f.Api)}</li>
-                    <li><b>Name:</b> {Encode(f.Name)}</li>
-                    <li><b>Protect:</b> {Encode(f.Protect ?? "")}</li>
-                    <li><b>Number:</b> {Encode(f.Number)}</li>
-                    <li><b>Comment:</b> {Encode(f.Comment ?? "")}</li>
-                    <li><b>Require:</b>
-                        {InterfaceList(f.Require)}
-                    </li>
-                    <li><b>Remove:</b>
-                        {InterfaceList(f.Remove)}
-                    </li>
-                </ul>
-            """
+                Body: new PropsBuilder()
+                    .Add("API", f.Api)
+                    .Add("Name", f.Name)
+                    .Add("Protect", f.Protect)
+                    .Add("Number", f.Number)
+                    .Add("Comment", f.Comment)
+                    .AddArray("Require", f.Require, x => InterfaceToHtml(x).BuildCommaSeparated())
+                    .AddArray("Remove", f.Remove, x => InterfaceToHtml(x).BuildCommaSeparated())
+                    .BuildUl()
         );
 
-    private static string InterfaceList(IEnumerable<InterfaceDef> list)
-    {
-        var body = string.Join("", list.Select(InterfaceToHtml));
-        return $"<ul>{body}</ul>";
-    }
-
-    private static string InterfaceToHtml(InterfaceDef r) =>
-        new PropsBuilder()
-            .Add("Profile", r.Profile)
-            .Add("Api", r.Api)
-            .Add("Comment", r.Comment)
-            .AddArray("Enums", r.Enums, ResolveEnum)
-            .AddArray("Commands", r.Commands, ResolveCommands)
-            .AddArray("Types", r.Types, ResolveTypes)
-            .BuildLiCS();
+        private static PropsBuilder InterfaceToHtml(InterfaceDef r) =>
+            new PropsBuilder()
+                .Add("Profile", r.Profile)
+                .Add("Api", r.Api)
+                .Add("Comment", r.Comment)
+                .AddArray("Enums", r.Enums, ResolveEnum)
+                .AddArray("Commands", r.Commands, ResolveCommands)
+                .AddArray("Types", r.Types, ResolveTypes);
 
     private static string ResolveTypes(InterfaceType arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
@@ -218,20 +205,14 @@ internal static class Writer
         new Page(
             FileName: $"extension_{ext.Name}",
             Title: $"Extension: {ext.Name}",
-            Body: $"""
-                <ul>
-                    <li><b>Name:</b> {Encode(ext.Name)}</li>
-                    <li><b>Supported:</b> {Encode(ext.Supported)}</li>
-                    <li><b>Protect:</b> {Encode(ext.Protect ?? "")}</li>
-                    <li><b>Comment:</b> {Encode(ext.Comment ?? "")}</li>
-                    <li><b>Require:</b>
-                        {InterfaceList(ext.Require)}
-                    </li>
-                    <li><b>Remove:</b>
-                        {InterfaceList(ext.Remove)}
-                    </li>
-                </ul>
-            """
+            Body: new PropsBuilder()
+                    .Add("Name", ext.Name)
+                    .AddArray("Supported", ext.Supported, Encode)
+                    .Add("Protect", ext.Protect)
+                    .Add("Comment", ext.Comment)
+                    .AddArray("Require", ext.Require, x => InterfaceToHtml(x).BuildCommaSeparated())
+                    .AddArray("Remove", ext.Remove, x => InterfaceToHtml(x).BuildCommaSeparated())
+                    .BuildUl()
         );
 
     private static Page CreateListingPage(string name, IEnumerable<Page> pages)

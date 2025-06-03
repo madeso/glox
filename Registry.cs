@@ -293,10 +293,11 @@ internal sealed class FeatureDef(
 }
 
 internal sealed class ExtensionDef(
-    string name, string supported, string? protect, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
+    Location location, string name, string supported, string? protect, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
+    private Location _location = location;
     internal string Name { get; } = name;
-    internal string Supported { get; } = supported;
+    internal string[] Supported { get; } = supported.Split("|", StringSplitOptions.TrimEntries);
     internal string? Protect { get; } = protect;
     internal string? Comment { get; } = comment;
     internal ImmutableArray<InterfaceDef> Require { get; } = require;
@@ -304,8 +305,27 @@ internal sealed class ExtensionDef(
 
     internal void Resolve(Registry registry, Level level)
     {
+        if (Supported.Any(ContainsNonIdentifier))
+        {
+            _location.ReportError("Supported contains non id", string.Join(", ", Supported));
+        }
+
         foreach (var r in Require) r.Resolve(registry, level);
         foreach (var r in Remove) r.Resolve(registry, level);
+    }
+
+    private static bool ContainsNonIdentifier(string arg)
+    {
+        if (string.IsNullOrEmpty(arg))
+            return true;
+        if (!(char.IsLetter(arg[0]) || arg[0] == '_'))
+            return true;
+        for (int i = 1; i < arg.Length; i++)
+        {
+            if (!(char.IsLetterOrDigit(arg[i]) || arg[i] == '_'))
+                return true;
+        }
+        return false;
     }
 }
 
@@ -615,7 +635,7 @@ internal static class Parser
         var comment = el.ReadAttribute("comment");
         var require = el.ElementsNamed("require").Select(ParseRequireRemoveDef).ToImmutableArray();
         var remove = el.ElementsNamed("remove").Select(ParseRequireRemoveDef).ToImmutableArray();
-        return new ExtensionDef(
+        return new ExtensionDef(el.Location,
             name: name,
             supported: supported,
             protect: protect,
