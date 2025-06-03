@@ -69,9 +69,9 @@ public static class Writer
             """
         );
 
-    private static Page EnumsPage(Registry.EnumType e, int idx) =>
+    private static Page EnumsPage(Registry.EnumType e) =>
         new Page(
-            FileName: $"enums_{e.Namespace ?? "none"}_{idx}",
+            FileName: $"enums_{e.Namespace ?? "none"}_{e.Index}",
             Title: $"Enums: {e.Namespace ?? "none"}",
             Body: $"""
                 <ul>

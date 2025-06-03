@@ -44,6 +44,7 @@ public sealed record GroupEnumRef(
 );
 
 public sealed record EnumType(
+    int Index,
     string? Namespace,
     EnumKind Type,
     string? Vendor,
@@ -52,8 +53,7 @@ public sealed record EnumType(
     string? End,
     string? Group,
     ImmutableArray<EnumValue> Enums,
-    ImmutableArray<UnusedDef> Unused
-);
+    ImmutableArray<UnusedDef> Unused);
 
 public sealed record EnumValue(
     string Name,
@@ -173,7 +173,7 @@ public static class Parser
         return new GroupDef(name, enums);
     }
 
-    private static EnumType ParseEnumsType(El el)
+    private static EnumType ParseEnumsType(El el, int index)
     {
         var ns = el.ReadAttribute("namespace");
         var typeStr = el.ReadAttribute("type");
@@ -190,7 +190,7 @@ public static class Parser
         var group = el.ReadAttribute("group");
         var enums = el.ElementsNamed("enum").Select(ParseEnumValue).ToImmutableArray();
         var unused = el.ElementsNamed("unused").Select(ParseUnusedDef).ToImmutableArray();
-        return new EnumType(ns, type, vendor, comment, start, end, group, enums, unused);
+        return new EnumType(index, ns, type, vendor, comment, start, end, group, enums, unused);
 
         static EnumKind InvalidTypeStr(El el, string typeStr)
         {
