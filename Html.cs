@@ -162,9 +162,9 @@ public static class Writer
             .Add("Kind", p.Kind)
             .Add("Len", p.Len)
             .Add("Class", p.Class)
-            .Add("Ptype", p.Ptype)
+            .Add("Type", p.Type, LinkToType)
             .Add("ApiEntry", p.ApiEntry)
-            .Add("Body", string.Join(" ", p.Body))
+            .AddArray("Body", p.Body, Encode)
             .BuildLiCS();
 
     private static Page FeaturePage(Registry.FeatureDef f) =>

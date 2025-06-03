@@ -223,14 +223,15 @@ public sealed class ProtoDef(
 }
 
 public sealed class ParamDef(
-    string? groupRef, string? kind, string? len, string? @class, string? ptype, string? apiEntry, string name, ImmutableArray<string> body)
+    string? groupRef, string? kind, string? len, string? @class, string? ptypeRef, string? apiEntry, string name, ImmutableArray<string> body)
 {
     public string? GroupRef { get; } = groupRef;
     public GroupDef? Group { get; private set; } = null;
     public string? Kind { get; } = kind;
     public string? Len { get; } = len;
     public string? Class { get; } = @class;
-    public string? Ptype { get; } = ptype;
+    public string? PtypeRef { get; } = ptypeRef;
+    public TypeDef Type { get; private set; } = TypeDef.Null();
     public string? ApiEntry { get; } = apiEntry;
     public string Name { get; } = name;
     public ImmutableArray<string> Body { get; } = body;
@@ -242,6 +243,19 @@ public sealed class ParamDef(
             if (GroupRef != null)
             {
                 Group = registry.GetGroup(GroupRef);
+            }
+
+            if (PtypeRef != null)
+            {
+                var found = registry.FindType(PtypeRef);
+                if (found != null)
+                {
+                    Type = found;
+                }
+                else
+                {
+                    // todo(Gustav): handle error
+                }
             }
         }
     }
@@ -551,7 +565,7 @@ public static class Parser
             kind: kind,
             len: len,
             @class: @class,
-            ptype: ptype,
+            ptypeRef: ptype,
             apiEntry: apientry,
             name: name,
             body: body
