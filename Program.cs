@@ -29,7 +29,7 @@ internal sealed class MainCommand : Command<MainCommand.Settings>
         {
             var p = $"/{registry}";
             using var doc = new El(errors, reg, p, p);
-            Parser.Parse(doc);
+            var re = Parser.Parse(doc);
         }
         else
         {
