@@ -4,6 +4,7 @@ using Glox.Registry;
 using System.Xml.Linq;
 using Spectre.Console;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace Glox.Html;
 
@@ -125,37 +126,32 @@ public static class Writer
         new Page(
             FileName: CommandLink(c),
             Title: $"Command: {c.Proto.Name}",
-            Body: $"""
-                <ul>
-                    <li><b>Name:</b> {Encode(c.Proto.Name)}</li>
-                    <li><b>Alias:</b> {Encode(c.Alias ?? "")}</li>
-                    <li><b>VecEquiv:</b> {Encode(c.VecEquiv ?? "")}</li>
-                    <li><b>Namespace:</b> {Encode(c.Namespace ?? "")}</li>
-                    <li><b>Comment:</b> {Encode(c.Comment ?? "")}</li>
-                    <li><b>Proto:</b>
-                        <ul>
-                            <li><b>Group:</b> {Encode(c.Proto.Group ?? "")}</li>
-                            <li><b>Kind:</b> {Encode(c.Proto.Kind ?? "")}</li>
-                            <li><b>Ptype:</b> {Encode(c.Proto.Ptype ?? "")}</li>
-                            <li><b>ApiEntry:</b> {Encode(c.Proto.ApiEntry ?? "")}</li>
-                            <li><b>Class:</b> {Encode(c.Proto.Class ?? "")}</li>
-                            <li><b>Name:</b> {Encode(c.Proto.Name)}</li>
-                            <li><b>Body:</b> <pre>{Encode(string.Join(" ", c.Proto.Body))}</pre></li>
-                        </ul>
-                    </li>
-                    <li><b>Params:</b>
-                        <ul>
-                            {string.Join("", c.Params.Select(ParamDefToHtml))}
-                        </ul>
-                    </li>
-                    <li><b>Glx:</b>
-                        {(c.Glx != null ? $"Type: {Encode(c.Glx.Type ?? "")}, Opcode: {Encode(c.Glx.Opcode ?? "")}" : "")}
-                    </li>
-                </ul>
-            """
+            Body:
+                new PropsBuilder()            
+                    .Add("Name", c.Proto.Name)
+                    .Add("Alias", c.Alias)
+                    .Add("VecEquiv", c.VecEquiv)
+                    .Add("Namespace", c.Namespace)
+                    .Add("Comment", c.Comment)
+                    .Add("Prop Group", c.Proto.Group)
+                    .Add("Prop Kind", c.Proto.Kind)
+                    .Add("Prop Ptype", c.Proto.Ptype)
+                    .Add("Prop ApiEntry", c.Proto.ApiEntry)
+                    .Add("Prop Class", c.Proto.Class)
+                    .Add("Prop Name", c.Proto.Name)
+                    .AddArray("Prop Body", c.Proto.Body, Encode)
+                    .AddArray("Params", c.Params, x => ParamDefToHtml(x).BuildCommaSeparated())
+                    .Add("Glx", c.Glx, GlxToHtml)
+                    .BuildUl()
+                
         );
 
-    private static string ParamDefToHtml(ParamDef p) =>
+    private static string GlxToHtml(GlxDef glx) => new PropsBuilder()
+        .Add("Type", glx.Type)
+        .Add("Opcode", glx.Opcode)
+        .BuildCommaSeparated();
+
+    private static PropsBuilder ParamDefToHtml(ParamDef p) =>
         new PropsBuilder()
             .Add("Name", p.Name)
             .Add("Group", p.Group, LinkToGroupDef)
@@ -164,14 +160,13 @@ public static class Writer
             .Add("Class", p.Class)
             .Add("Type", p.Type, LinkToType)
             .Add("ApiEntry", p.ApiEntry)
-            .AddArray("Body", p.Body, Encode)
-            .BuildLiCS();
-
-    private static Page FeaturePage(Registry.FeatureDef f) =>
-        new Page(
-            FileName: $"feature_{f.Name}",
-            Title: $"Feature: {f.Name}",
-            Body: $"""
+            .AddArray("Body", p.Body, Encode);
+    
+        private static Page FeaturePage(Registry.FeatureDef f) =>
+            new Page(
+                FileName: $"feature_{f.Name}",
+                Title: $"Feature: {f.Name}",
+                Body: $"""
                 <ul>
                     <li><b>API:</b> {Encode(f.Api)}</li>
                     <li><b>Name:</b> {Encode(f.Name)}</li>
@@ -371,5 +366,12 @@ internal class PropsBuilder
     {
         _allProps.AddRange(list.Select(resolve));
         return this;
+    }
+
+    public string BuildUl()
+    {
+        var all = _allProps.Select(x => $"<li>{x}</li>");
+        var li = string.Join("", all);
+        return $"<ul>{li}</ul>";
     }
 }
