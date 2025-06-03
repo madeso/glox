@@ -8,9 +8,9 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Glox.Html;
 
-public record Page(string FileName, string Title, string Body);
+internal record Page(string FileName, string Title, string Body);
 
-public static class Writer
+internal static class Writer
 {
     internal static string Encode(string s) => System.Net.WebUtility.HtmlEncode(s);
     internal static string MakeLink(string link, string name) => $"<a href=\"{link}.html\">{Encode(name)}</a>";
@@ -298,7 +298,7 @@ public static class Writer
         ], footer);
     }
 
-    public static void Write(DirectoryInfo folder, Registry.Registry registry)
+    internal static void Write(DirectoryInfo folder, Registry.Registry registry)
     {
         AnsiConsole.WriteLine("Generating pages...");
         var (pages, footer) = GenerateAllPages(registry);
@@ -315,12 +315,12 @@ internal class PropsBuilder
 {
     private readonly List<string> _allProps = new();
 
-    public PropsBuilder AddEconded(string value)
+    internal PropsBuilder AddEconded(string value)
     {
         _allProps.Add(value);
         return this;
     }
-    public PropsBuilder Add(string? value)
+    internal PropsBuilder Add(string? value)
     {
         if (value != null)
         {
@@ -329,7 +329,7 @@ internal class PropsBuilder
         return this;
     }
 
-    public PropsBuilder Add(string name, string? value)
+    internal PropsBuilder Add(string name, string? value)
     {
         if(value != null) {
             _allProps.Add($"{Writer.Encode(name)}: {Writer.Encode(value)}");
@@ -337,7 +337,7 @@ internal class PropsBuilder
         return this;
     }
 
-    public PropsBuilder Add<T>(string name, T? value, Func<T, string> converter) where T: class
+    internal PropsBuilder Add<T>(string name, T? value, Func<T, string> converter) where T: class
     {
         if (value != null)
         {
@@ -346,7 +346,7 @@ internal class PropsBuilder
         return this;
     }
 
-    public PropsBuilder AddArray<T>(string name, IEnumerable<T> list, Func<T, string> resolve)
+    internal PropsBuilder AddArray<T>(string name, IEnumerable<T> list, Func<T, string> resolve)
     {
         var r = list.Select(resolve).ToImmutableArray();
         if(r.Length > 0)
@@ -357,18 +357,18 @@ internal class PropsBuilder
         return this;
     }
 
-    public string BuildCommaSeparated() => string.Join(", ", _allProps);
+    internal string BuildCommaSeparated() => string.Join(", ", _allProps);
 
-    public string BuildLiCS()
+    internal string BuildLiCS()
         => $"<li>{BuildCommaSeparated()}</li>";
 
-    public PropsBuilder AddSeveral<T>(IEnumerable<T> list, Func<T, string> resolve)
+    internal PropsBuilder AddSeveral<T>(IEnumerable<T> list, Func<T, string> resolve)
     {
         _allProps.AddRange(list.Select(resolve));
         return this;
     }
 
-    public string BuildUl()
+    internal string BuildUl()
     {
         var all = _allProps.Select(x => $"<li>{x}</li>");
         var li = string.Join("", all);

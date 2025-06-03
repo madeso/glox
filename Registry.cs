@@ -10,13 +10,13 @@ internal enum Level { ResolveGroupRefs,
     ResolveInterface
 }
 
-public enum EnumKind
+internal enum EnumKind
 {
     Default,
     Bitmask
 }
 
-public sealed class Registry(
+internal sealed class Registry(
     ImmutableArray<TypeDef> types,
     ImmutableArray<KindDef> kinds,
     ImmutableArray<GroupDef> groups,
@@ -26,15 +26,15 @@ public sealed class Registry(
     ImmutableArray<ExtensionDef> extensions,
     ImmutableArray<string> comments)
 {
-    public ImmutableDictionary<string, TypeDef> Types { get; } = types.ToImmutableDictionary(x => x.Name, x=>x);
-    public ImmutableArray<KindDef> Kinds { get; } = kinds;
-    public Dictionary<string, GroupDef> GroupFromName { get; } = groups.ToDictionary(x => x.Name, x=>x);
-    public ImmutableArray<EnumBlock> EnumBlocks { get; } = enumBlocks;
-    public ImmutableDictionary<string, CommandDef> CommandFromName { get; } = commands.ToImmutableDictionary(x => x.Proto.Name, x => x);
-    public ImmutableArray<FeatureDef> Features { get; } = features;
-    public ImmutableArray<ExtensionDef> Extensions { get; } = extensions;
-    public ImmutableArray<string> Comments { get; } = comments;
-    public ImmutableDictionary<string, ImmutableArray<EnumValue>> EnumValuesFromName { get; } =
+    internal ImmutableDictionary<string, TypeDef> Types { get; } = types.ToImmutableDictionary(x => x.Name, x=>x);
+    internal ImmutableArray<KindDef> Kinds { get; } = kinds;
+    internal Dictionary<string, GroupDef> GroupFromName { get; } = groups.ToDictionary(x => x.Name, x=>x);
+    internal ImmutableArray<EnumBlock> EnumBlocks { get; } = enumBlocks;
+    internal ImmutableDictionary<string, CommandDef> CommandFromName { get; } = commands.ToImmutableDictionary(x => x.Proto.Name, x => x);
+    internal ImmutableArray<FeatureDef> Features { get; } = features;
+    internal ImmutableArray<ExtensionDef> Extensions { get; } = extensions;
+    internal ImmutableArray<string> Comments { get; } = comments;
+    internal ImmutableDictionary<string, ImmutableArray<EnumValue>> EnumValuesFromName { get; } =
         enumBlocks
             .SelectMany(b => b.Enums)
             .GroupBy(x => x.Name)
@@ -55,7 +55,7 @@ public sealed class Registry(
         // Comments are strings, nothing to resolve
     }
 
-    public GroupDef GetGroup(string name)
+    internal GroupDef GetGroup(string name)
     {
         if (GroupFromName.TryGetValue(name, out var def)) return def;
 
@@ -64,22 +64,22 @@ public sealed class Registry(
         return def;
     }
 
-    public ImmutableArray<EnumValue> FindEnumValue(string name) => CollectionExtensions.GetValueOrDefault(EnumValuesFromName, name);
+    internal ImmutableArray<EnumValue> FindEnumValue(string name) => CollectionExtensions.GetValueOrDefault(EnumValuesFromName, name);
 
-    public CommandDef? FindCommand(string name) => CollectionExtensions.GetValueOrDefault(CommandFromName, name);
+    internal CommandDef? FindCommand(string name) => CollectionExtensions.GetValueOrDefault(CommandFromName, name);
 
-    public TypeDef? FindType(string name) => CollectionExtensions.GetValueOrDefault(Types, name);
+    internal TypeDef? FindType(string name) => CollectionExtensions.GetValueOrDefault(Types, name);
 }
 
-public sealed class TypeDef
+internal sealed class TypeDef
 {
-    public string Name { get; }
-    public string? Requires { get; }
-    public string? Comment { get; }
-    public string? ApiEntry { get; }
-    public string CodeBlock { get; }
+    internal string Name { get; }
+    internal string? Requires { get; }
+    internal string? Comment { get; }
+    internal string? ApiEntry { get; }
+    internal string CodeBlock { get; }
 
-    public TypeDef(string name, string? requires, string? comment, string? apiEntry, string codeBlock)
+    internal TypeDef(string name, string? requires, string? comment, string? apiEntry, string codeBlock)
     {
         Name = name;
         Requires = requires;
@@ -93,16 +93,16 @@ public sealed class TypeDef
         // Nothing to resolve
     }
 
-    public static TypeDef Null()
+    internal static TypeDef Null()
     {
         return new TypeDef("<null>", null, null, null, "<null>");
     }
 }
 
-public sealed class KindDef(string name, string? desc)
+internal sealed class KindDef(string name, string? desc)
 {
-    public string Name { get; } = name;
-    public string? Desc { get; } = desc;
+    internal string Name { get; } = name;
+    internal string? Desc { get; } = desc;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -110,11 +110,11 @@ public sealed class KindDef(string name, string? desc)
     }
 }
 
-public sealed class GroupDef(string name, ImmutableArray<string> enumsRefs)
+internal sealed class GroupDef(string name, ImmutableArray<string> enumsRefs)
 {
-    public string Name { get; } = name;
-    public ImmutableArray<string> EnumsRefs { get; } = enumsRefs;
-    public List<EnumValue> Enums { get; } = new();
+    internal string Name { get; } = name;
+    internal ImmutableArray<string> EnumsRefs { get; } = enumsRefs;
+    internal List<EnumValue> Enums { get; } = new();
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -122,19 +122,19 @@ public sealed class GroupDef(string name, ImmutableArray<string> enumsRefs)
     }
 }
 
-public sealed class EnumBlock(
+internal sealed class EnumBlock(
     int index, string? ns, EnumKind type, string? vendor, string? comment, string? start, string? end, string? group, ImmutableArray<EnumValue> enums, ImmutableArray<UnusedDef> unused)
 {
-    public int Index { get; } = index;
-    public string? Namespace { get; } = ns;
-    public EnumKind Type { get; } = type;
-    public string? Vendor { get; } = vendor;
-    public string? Comment { get; } = comment;
-    public string? Start { get; } = start;
-    public string? End { get; } = end;
-    public string? Group { get; } = group;
-    public ImmutableArray<EnumValue> Enums { get; } = enums;
-    public ImmutableArray<UnusedDef> Unused { get; } = unused;
+    internal int Index { get; } = index;
+    internal string? Namespace { get; } = ns;
+    internal EnumKind Type { get; } = type;
+    internal string? Vendor { get; } = vendor;
+    internal string? Comment { get; } = comment;
+    internal string? Start { get; } = start;
+    internal string? End { get; } = end;
+    internal string? Group { get; } = group;
+    internal ImmutableArray<EnumValue> Enums { get; } = enums;
+    internal ImmutableArray<UnusedDef> Unused { get; } = unused;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -143,17 +143,17 @@ public sealed class EnumBlock(
     }
 }
 
-public sealed class EnumValue(
+internal sealed class EnumValue(
     string name, string? value, string? api, string? type, ImmutableArray<string> groupRefs, string? alias, string? comment)
 {
-    public string Name { get; } = name;
-    public string? Value { get; } = value;
-    public string? Api { get; } = api;
-    public string? Type { get; } = type;
-    public ImmutableArray<string> GroupRefs { get; } = groupRefs;
-    public ImmutableArray<GroupDef> Groups { get; private set; } = [];
-    public string? Alias { get; } = alias;
-    public string? Comment { get; } = comment;
+    internal string Name { get; } = name;
+    internal string? Value { get; } = value;
+    internal string? Api { get; } = api;
+    internal string? Type { get; } = type;
+    internal ImmutableArray<string> GroupRefs { get; } = groupRefs;
+    internal ImmutableArray<GroupDef> Groups { get; private set; } = [];
+    internal string? Alias { get; } = alias;
+    internal string? Comment { get; } = comment;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -168,12 +168,12 @@ public sealed class EnumValue(
     }
 }
 
-public sealed class UnusedDef(string? start, string? end, string? vendor, string? comment)
+internal sealed class UnusedDef(string? start, string? end, string? vendor, string? comment)
 {
-    public string? Start { get; } = start;
-    public string? End { get; } = end;
-    public string? Vendor { get; } = vendor;
-    public string? Comment { get; } = comment;
+    internal string? Start { get; } = start;
+    internal string? End { get; } = end;
+    internal string? Vendor { get; } = vendor;
+    internal string? Comment { get; } = comment;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -181,16 +181,16 @@ public sealed class UnusedDef(string? start, string? end, string? vendor, string
     }
 }
 
-public sealed class CommandDef(
+internal sealed class CommandDef(
     ProtoDef proto, ImmutableArray<ParamDef> @params, string? alias, string? vecequiv, GlxDef? glx, string? comment, string? ns)
 {
-    public ProtoDef Proto { get; } = proto;
-    public ImmutableArray<ParamDef> Params { get; } = @params;
-    public string? Alias { get; } = alias;
-    public string? VecEquiv { get; } = vecequiv;
-    public GlxDef? Glx { get; } = glx;
-    public string? Comment { get; } = comment;
-    public string? Namespace { get; } = ns;
+    internal ProtoDef Proto { get; } = proto;
+    internal ImmutableArray<ParamDef> Params { get; } = @params;
+    internal string? Alias { get; } = alias;
+    internal string? VecEquiv { get; } = vecequiv;
+    internal GlxDef? Glx { get; } = glx;
+    internal string? Comment { get; } = comment;
+    internal string? Namespace { get; } = ns;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -199,22 +199,22 @@ public sealed class CommandDef(
         Glx?.Resolve(registry, level);
     }
 
-    public static CommandDef Null()
+    internal static CommandDef Null()
     {
         return new CommandDef(new ProtoDef(null, null, null, null, null, "<null>", []), [], null, null, null, null, null);
     }
 }
 
-public sealed class ProtoDef(
+internal sealed class ProtoDef(
     string? group, string? kind, string? ptype, string? apiEntry, string? @class, string name, ImmutableArray<string> body)
 {
-    public string? Group { get; } = group;
-    public string? Kind { get; } = kind;
-    public string? Ptype { get; } = ptype;
-    public string? ApiEntry { get; } = apiEntry;
-    public string? Class { get; } = @class;
-    public string Name { get; } = name;
-    public ImmutableArray<string> Body { get; } = body;
+    internal string? Group { get; } = group;
+    internal string? Kind { get; } = kind;
+    internal string? Ptype { get; } = ptype;
+    internal string? ApiEntry { get; } = apiEntry;
+    internal string? Class { get; } = @class;
+    internal string Name { get; } = name;
+    internal ImmutableArray<string> Body { get; } = body;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -222,19 +222,21 @@ public sealed class ProtoDef(
     }
 }
 
-public sealed class ParamDef(
-    string? groupRef, string? kind, string? len, string? @class, string? ptypeRef, string? apiEntry, string name, ImmutableArray<string> body)
+internal sealed class ParamDef(
+    Location location, string? groupRef, string? kind, string? len, string? @class, string? ptypeRef, string? apiEntry, string name, ImmutableArray<string> body)
 {
-    public string? GroupRef { get; } = groupRef;
-    public GroupDef? Group { get; private set; } = null;
-    public string? Kind { get; } = kind;
-    public string? Len { get; } = len;
-    public string? Class { get; } = @class;
-    public string? PtypeRef { get; } = ptypeRef;
-    public TypeDef Type { get; private set; } = TypeDef.Null();
-    public string? ApiEntry { get; } = apiEntry;
-    public string Name { get; } = name;
-    public ImmutableArray<string> Body { get; } = body;
+    private readonly Location _location = location;
+
+    internal string? GroupRef { get; } = groupRef;
+    internal GroupDef? Group { get; private set; } = null;
+    internal string? Kind { get; } = kind;
+    internal string? Len { get; } = len;
+    internal string? Class { get; } = @class;
+    internal string? PtypeRef { get; } = ptypeRef;
+    internal TypeDef Type { get; private set; } = TypeDef.Null();
+    internal string? ApiEntry { get; } = apiEntry;
+    internal string Name { get; } = name;
+    internal ImmutableArray<string> Body { get; } = body;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -254,17 +256,17 @@ public sealed class ParamDef(
                 }
                 else
                 {
-                    // todo(Gustav): handle error
+                    _location.ReportError($"missing reference {PtypeRef}");
                 }
             }
         }
     }
 }
 
-public sealed class GlxDef(string? type, string? opcode)
+internal sealed class GlxDef(string? type, string? opcode)
 {
-    public string? Type { get; } = type;
-    public string? Opcode { get; } = opcode;
+    internal string? Type { get; } = type;
+    internal string? Opcode { get; } = opcode;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -272,16 +274,16 @@ public sealed class GlxDef(string? type, string? opcode)
     }
 }
 
-public sealed class FeatureDef(
+internal sealed class FeatureDef(
     string api, string name, string? protect, string number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
-    public string Api { get; } = api;
-    public string Name { get; } = name;
-    public string? Protect { get; } = protect;
-    public string Number { get; } = number;
-    public string? Comment { get; } = comment;
-    public ImmutableArray<InterfaceDef> Require { get; } = require;
-    public ImmutableArray<InterfaceDef> Remove { get; } = remove;
+    internal string Api { get; } = api;
+    internal string Name { get; } = name;
+    internal string? Protect { get; } = protect;
+    internal string Number { get; } = number;
+    internal string? Comment { get; } = comment;
+    internal ImmutableArray<InterfaceDef> Require { get; } = require;
+    internal ImmutableArray<InterfaceDef> Remove { get; } = remove;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -290,15 +292,15 @@ public sealed class FeatureDef(
     }
 }
 
-public sealed class ExtensionDef(
+internal sealed class ExtensionDef(
     string name, string supported, string? protect, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
-    public string Name { get; } = name;
-    public string Supported { get; } = supported;
-    public string? Protect { get; } = protect;
-    public string? Comment { get; } = comment;
-    public ImmutableArray<InterfaceDef> Require { get; } = require;
-    public ImmutableArray<InterfaceDef> Remove { get; } = remove;
+    internal string Name { get; } = name;
+    internal string Supported { get; } = supported;
+    internal string? Protect { get; } = protect;
+    internal string? Comment { get; } = comment;
+    internal ImmutableArray<InterfaceDef> Require { get; } = require;
+    internal ImmutableArray<InterfaceDef> Remove { get; } = remove;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -307,15 +309,15 @@ public sealed class ExtensionDef(
     }
 }
 
-public sealed class InterfaceDef(
+internal sealed class InterfaceDef(
     string? profile, string? api, string? comment, ImmutableArray<InterfaceEnum> enums, ImmutableArray<InterfaceCommand> commands, ImmutableArray<InterfaceType> types)
 {
-    public string? Profile { get; } = profile;
-    public string? Api { get; } = api;
-    public string? Comment { get; } = comment;
-    public ImmutableArray<InterfaceEnum> Enums { get; } = enums;
-    public ImmutableArray<InterfaceCommand> Commands { get; } = commands;
-    public ImmutableArray<InterfaceType> Types { get; } = types;
+    internal string? Profile { get; } = profile;
+    internal string? Api { get; } = api;
+    internal string? Comment { get; } = comment;
+    internal ImmutableArray<InterfaceEnum> Enums { get; } = enums;
+    internal ImmutableArray<InterfaceCommand> Commands { get; } = commands;
+    internal ImmutableArray<InterfaceType> Types { get; } = types;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -325,11 +327,12 @@ public sealed class InterfaceDef(
     }
 }
 
-public sealed class InterfaceEnum(string enumValueRef, string? comment)
+internal sealed class InterfaceEnum(Location location, string enumValueRef, string? comment)
 {
-    public string EnumValueRef { get; } = enumValueRef;
-    public ImmutableArray<EnumValue> Value { get; private set; } = [];
-    public string? Comment { get; } = comment;
+    private Location _location = location;
+    internal string EnumValueRef { get; } = enumValueRef;
+    internal ImmutableArray<EnumValue> Value { get; private set; } = [];
+    internal string? Comment { get; } = comment;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -342,17 +345,18 @@ public sealed class InterfaceEnum(string enumValueRef, string? comment)
             }
             else
             {
-                // todo(Gustav): report error
+                _location.ReportError($"Missing enum value {EnumValueRef}");
             }
         }
     }
 }
 
-public sealed class InterfaceCommand(string commandRef, string? comment)
+internal sealed class InterfaceCommand(Location location, string commandRef, string? comment)
 {
-    public string CommandRef { get; } = commandRef;
-    public CommandDef Command { get; private set; } = CommandDef.Null();
-    public string? Comment { get; } = comment;
+    private Location _location = location;
+    internal string CommandRef { get; } = commandRef;
+    internal CommandDef Command { get; private set; } = CommandDef.Null();
+    internal string? Comment { get; } = comment;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -365,17 +369,18 @@ public sealed class InterfaceCommand(string commandRef, string? comment)
             }
             else
             {
-                // todo(Gustav): report error
+                _location.ReportError($"Missing command {CommandRef}");
             }
         }
     }
 }
 
-public sealed class InterfaceType(string typeRef, string? comment)
+internal sealed class InterfaceType(Location location, string typeRef, string? comment)
 {
-    public string TypeRef { get; } = typeRef;
-    public TypeDef Type { get; private set; } = TypeDef.Null();
-    public string? Comment { get; } = comment;
+    private Location _location = location;
+    internal string TypeRef { get; } = typeRef;
+    internal TypeDef Type { get; private set; } = TypeDef.Null();
+    internal string? Comment { get; } = comment;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -388,13 +393,13 @@ public sealed class InterfaceType(string typeRef, string? comment)
             }
             else
             {
-                // todo(Gustav): report error
+                _location.ReportError($"Missing type {TypeRef}");
             }
         }
     }
 }
 
-public static class Parser
+internal static class Parser
 {
     private static TypeDef ParseTypeDef(El el)
     {
@@ -406,7 +411,7 @@ public static class Parser
         var body = string.Join("", el.ReadInnerText());
         if (name == null)
         {
-            el.ReportError("Missing name for type");
+            el.Location.ReportError("Missing name for type");
             name = "missing";
         }
         return new TypeDef(
@@ -471,7 +476,7 @@ public static class Parser
 
         static EnumKind InvalidTypeStr(El el, string typeStr)
         {
-            el.ReportError("Invalid type", $"Got type {typeStr}");
+            el.Location.ReportError("Invalid type", $"Got type {typeStr}");
             return EnumKind.Default;
         }
     }
@@ -560,7 +565,7 @@ public static class Parser
         var ptype = el.ElementsNamed("ptype").Select(p => p.ReadInnerText().FirstOrDefault()).FirstOrDefault();
         var name = el.ElementsNamed("name").Select(n => n.ReadInnerText().FirstOrDefault()).FirstOrDefault() ?? "";
         var body = el.ReadInnerText();
-        return new ParamDef(
+        return new ParamDef(el.Location,
             groupRef: group,
             kind: kind,
             len: len,
@@ -625,15 +630,15 @@ public static class Parser
         var profile = el.ReadAttribute("profile");
         var api = el.ReadAttribute("api");
         var comment = el.ReadAttribute("comment");
-        var enums = el.ElementsNamed("enum").Select(e => new InterfaceEnum(
+        var enums = el.ElementsNamed("enum").Select(e => new InterfaceEnum(e.Location,
             enumValueRef: e.ReadAttribute("name") ?? "",
             comment: e.ReadAttribute("comment")
         )).ToImmutableArray();
-        var commands = el.ElementsNamed("command").Select(e => new InterfaceCommand(
+        var commands = el.ElementsNamed("command").Select(e => new InterfaceCommand(e.Location,
             commandRef: e.ReadAttribute("name") ?? "",
             comment: e.ReadAttribute("comment")
         )).ToImmutableArray();
-        var types = el.ElementsNamed("type").Select(e => new InterfaceType(
+        var types = el.ElementsNamed("type").Select(e => new InterfaceType(e.Location,
             typeRef: e.ReadAttribute("name") ?? "",
             comment: e.ReadAttribute("comment")
         )).ToImmutableArray();

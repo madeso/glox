@@ -29,7 +29,7 @@ internal sealed class MainCommand : Command<MainCommand.Settings>
         if(reg != null)
         {
             var p = $"/{registryElementName}";
-            using var doc = new El(errors, reg, p, p);
+            using var doc = new El(new(errors, p, p), reg);
             var registry = Parser.Parse(doc);
 
             Writer.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry);
@@ -43,13 +43,35 @@ internal sealed class MainCommand : Command<MainCommand.Settings>
     }
 }
 
-internal class El : IDisposable
+internal class Location
 {
-    public El(Errors errors, XmlElement element, string path, string genericPath)
+    public Location(Errors errors, string path, string genericPath)
     {
         _path = path;
         _genericPath = genericPath;
         _errors = errors;
+    }
+
+    private readonly Errors _errors;
+    private readonly string _path;
+    private readonly string _genericPath;
+
+    public void ReportError(string message, string? note = null)
+    {
+        _errors.Report(_path, _genericPath, message, note);
+    }
+
+    public Location Sub(string name, int index)
+    {
+        return new Location(_errors, $"{_path}/{name}[{index}]", $"{_genericPath}/{name}");
+    }
+}
+
+internal class El : IDisposable
+{
+    public El(Location location, XmlElement element)
+    {
+        _location = location;
         _elements = [..element.Cast<XmlNode>().Where(x => x is XmlElement).Cast<XmlElement>()];
         _unusedElements = _elements.Select(x => x.Name).ToHashSet();
 
@@ -62,11 +84,11 @@ internal class El : IDisposable
 
     private readonly ImmutableArray<XmlElement> _elements;
     private readonly HashSet<string> _unusedElements;
-    private readonly Errors _errors;
-    private readonly string _path;
     private ImmutableArray<string> _innerText;
-    private readonly string _genericPath;
     private readonly Dictionary<string, string> _attributes;
+    private readonly Location _location;
+
+    public Location Location => _location;
 
     public IEnumerable<El> ElementsNamed(string name)
     {
@@ -75,7 +97,7 @@ internal class El : IDisposable
         foreach (var x in _elements)
         {
             if (x.Name != name) continue;
-            using var r = new El(_errors, x, $"{_path}/{name}[{index}]", $"{_genericPath}/{name}");
+            using var r = new El(_location.Sub(name, index), x);
             yield return r;
             index += 1;
         }
@@ -86,19 +108,19 @@ internal class El : IDisposable
         if (_unusedElements.Count > 0)
         {
             var m = string.Join(", ", _unusedElements);
-            ReportError($"Unused elements: {m}");
+            _location.ReportError($"Unused elements: {m}");
         }
 
         if (_innerText.Length > 0)
         {
             var i = string.Join(" ", _innerText);
-            ReportError("Unused inner text", i);
+            _location.ReportError("Unused inner text", i);
         }
 
         if (_attributes.Count > 0)
         {
             var a = string.Join(", ", _attributes.Keys);
-            ReportError($"Unused attributes: {a}");
+            _location.ReportError($"Unused attributes: {a}");
         }
     }
 
@@ -111,11 +133,6 @@ internal class El : IDisposable
 
     public string? ReadAttribute(string name)
         => _attributes.Remove(name, out var ret) ? ret : null;
-
-    public void ReportError(string message, string? note = null)
-    {
-        _errors.Report(_path, _genericPath, message, note);
-    }
 }
 
 internal class Errors
