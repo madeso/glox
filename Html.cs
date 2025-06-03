@@ -150,9 +150,8 @@ public static class Writer
             """
         );
 
-    private static string ParamDefToHtml(ParamDef p)
-    {
-        var props = new PropsBuilder()
+    private static string ParamDefToHtml(ParamDef p) =>
+        new PropsBuilder()
             .Add("Name", p.Name)
             .Add("Group", p.Group, LinkToGroupDef)
             .Add("Kind", p.Kind)
@@ -161,9 +160,7 @@ public static class Writer
             .Add("Ptype", p.Ptype)
             .Add("ApiEntry", p.ApiEntry)
             .Add("Body", string.Join(" ", p.Body))
-            .Build();
-        return $"<li>{props}</li>";
-    }
+            .BuildLiCS();
 
     private static Page FeaturePage(Registry.FeatureDef f) =>
         new Page(
@@ -192,33 +189,30 @@ public static class Writer
         return $"<ul>{body}</ul>";
     }
 
-    private static string InterfaceToHtml(InterfaceDef r)
-    {
-        var props = new PropsBuilder()
+    private static string InterfaceToHtml(InterfaceDef r) =>
+        new PropsBuilder()
             .Add("Profile", r.Profile)
             .Add("Api", r.Api)
             .Add("Comment", r.Comment)
             .AddArray("Enums", r.Enums, ResolveEnum)
             .AddArray("Commands", r.Commands, ResolveCommands)
             .AddArray("Types", r.Types, ResolveTypes)
-            .Build();
-        return $"<li>{props}</li>";
-    }
+            .BuildLiCS();
 
     private static string ResolveTypes(RequireType arg) => new PropsBuilder()
         .Add(arg.Name)
         .Add("Comment", arg.Comment)
-        .Build();
+        .BuildCommaSeparated();
 
     private static string ResolveCommands(RequireCommand arg) => new PropsBuilder()
         .Add(arg.Name)
         .Add("Comment", arg.Comment)
-        .Build();
+        .BuildCommaSeparated();
 
     private static string ResolveEnum(RequireEnum arg) => new PropsBuilder()
         .Add(arg.Name)
         .Add("Comment", arg.Comment)
-        .Build();
+        .BuildCommaSeparated();
 
     private static Page ExtensionPage(Registry.ExtensionDef ext) =>
         new Page(
@@ -344,16 +338,19 @@ internal class PropsBuilder
         return this;
     }
 
-    public string Build() => string.Join(", ", _allProps);
-
-    public PropsBuilder AddArray<T>(string name, ImmutableArray<T> list, Func<T, string> resolve)
+    public PropsBuilder AddArray<T>(string name, IEnumerable<T> list, Func<T, string> resolve)
     {
         var r = list.Select(resolve).ToImmutableArray();
         if(r.Length > 0)
         {
-            var value = string.Join(", ", r);
-            _allProps.Add($"{Writer.Encode(name)}: {value}");
+            var value = string.Join("", r.Select(x => $"<li>{x}</li>"));
+            _allProps.Add($"{Writer.Encode(name)}: <ul>{value}</ul>");
         }
         return this;
     }
+
+    public string BuildCommaSeparated() => string.Join(", ", _allProps);
+
+    public string BuildLiCS()
+        => $"<li>{BuildCommaSeparated()}</li>";
 }
