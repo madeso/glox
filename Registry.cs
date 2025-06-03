@@ -1,8 +1,14 @@
 ﻿using System.Collections.Immutable;
+using System.Xml.Linq;
+using Spectre.Console;
 
 namespace Glox.Registry;
 
 // Data model for the Khronos OpenGL API Registry Schema
+
+internal enum Level { ResolveGroupRefs,
+    ResolveInterface
+}
 
 public enum EnumKind
 {
@@ -20,35 +26,49 @@ public sealed class Registry(
     ImmutableArray<ExtensionDef> extensions,
     ImmutableArray<string> comments)
 {
-    public ImmutableArray<TypeDef> Types { get; } = types;
+    public ImmutableDictionary<string, TypeDef> Types { get; } = types.ToImmutableDictionary(x => x.Name, x=>x);
     public ImmutableArray<KindDef> Kinds { get; } = kinds;
-    public Dictionary<string, GroupDef> Groups { get; } = groups.ToDictionary(x => x.Name, x=>x);
+    public Dictionary<string, GroupDef> GroupFromName { get; } = groups.ToDictionary(x => x.Name, x=>x);
     public ImmutableArray<EnumBlock> EnumBlocks { get; } = enumBlocks;
-    public ImmutableArray<CommandDef> Commands { get; } = commands;
+    public ImmutableDictionary<string, CommandDef> CommandFromName { get; } = commands.ToImmutableDictionary(x => x.Proto.Name, x => x);
     public ImmutableArray<FeatureDef> Features { get; } = features;
     public ImmutableArray<ExtensionDef> Extensions { get; } = extensions;
     public ImmutableArray<string> Comments { get; } = comments;
+    public ImmutableDictionary<string, ImmutableArray<EnumValue>> EnumValuesFromName { get; } =
+        enumBlocks
+            .SelectMany(b => b.Enums)
+            .GroupBy(x => x.Name)
+            .ToImmutableDictionary(
+                g => g.Key,
+                g => g.ToImmutableArray()
+            );
 
-    public void Resolve()
+    internal void Resolve(Level level)
     {
-        foreach (var t in Types) t.Resolve(this);
-        foreach (var k in Kinds) k.Resolve(this);
-        foreach (var g in Groups.Values) g.Resolve(this);
-        foreach (var e in EnumBlocks) e.Resolve(this);
-        foreach (var c in Commands) c.Resolve(this);
-        foreach (var f in Features) f.Resolve(this);
-        foreach (var e in Extensions) e.Resolve(this);
+        foreach (var t in Types.Values) t.Resolve(this, level);
+        foreach (var k in Kinds) k.Resolve(this, level);
+        foreach (var g in GroupFromName.Values) g.Resolve(this, level);
+        foreach (var e in EnumBlocks) e.Resolve(this, level);
+        foreach (var c in CommandFromName.Values) c.Resolve(this, level);
+        foreach (var f in Features) f.Resolve(this, level);
+        foreach (var e in Extensions) e.Resolve(this, level);
         // Comments are strings, nothing to resolve
     }
 
     public GroupDef GetGroup(string name)
     {
-        if (Groups.TryGetValue(name, out var def)) return def;
+        if (GroupFromName.TryGetValue(name, out var def)) return def;
 
         def = new GroupDef(name, []);
-        Groups.Add(name, def);
+        GroupFromName.Add(name, def);
         return def;
     }
+
+    public ImmutableArray<EnumValue> FindEnumValue(string name) => CollectionExtensions.GetValueOrDefault(EnumValuesFromName, name);
+
+    public CommandDef? FindCommand(string name) => CollectionExtensions.GetValueOrDefault(CommandFromName, name);
+
+    public TypeDef? FindType(string name) => CollectionExtensions.GetValueOrDefault(Types, name);
 }
 
 public sealed class TypeDef
@@ -68,9 +88,14 @@ public sealed class TypeDef
         CodeBlock = codeBlock;
     }
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
+    }
+
+    public static TypeDef Null()
+    {
+        return new TypeDef("<null>", null, null, null, "<null>");
     }
 }
 
@@ -79,7 +104,7 @@ public sealed class KindDef(string name, string? desc)
     public string Name { get; } = name;
     public string? Desc { get; } = desc;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
     }
@@ -91,13 +116,14 @@ public sealed class GroupDef(string name, ImmutableArray<string> enumsRefs)
     public ImmutableArray<string> EnumsRefs { get; } = enumsRefs;
     public List<EnumValue> Enums { get; } = new();
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
     }
 }
 
-public sealed class EnumBlock(int index, string? ns, EnumKind type, string? vendor, string? comment, string? start, string? end, string? group, ImmutableArray<EnumValue> enums, ImmutableArray<UnusedDef> unused)
+public sealed class EnumBlock(
+    int index, string? ns, EnumKind type, string? vendor, string? comment, string? start, string? end, string? group, ImmutableArray<EnumValue> enums, ImmutableArray<UnusedDef> unused)
 {
     public int Index { get; } = index;
     public string? Namespace { get; } = ns;
@@ -110,14 +136,15 @@ public sealed class EnumBlock(int index, string? ns, EnumKind type, string? vend
     public ImmutableArray<EnumValue> Enums { get; } = enums;
     public ImmutableArray<UnusedDef> Unused { get; } = unused;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        foreach (var e in Enums) e.Resolve(registry);
-        foreach (var u in Unused) u.Resolve(registry);
+        foreach (var e in Enums) e.Resolve(registry, level);
+        foreach (var u in Unused) u.Resolve(registry, level);
     }
 }
 
-public sealed class EnumValue(string name, string? value, string? api, string? type, ImmutableArray<string> groupRefs, string? alias, string? comment)
+public sealed class EnumValue(
+    string name, string? value, string? api, string? type, ImmutableArray<string> groupRefs, string? alias, string? comment)
 {
     public string Name { get; } = name;
     public string? Value { get; } = value;
@@ -128,12 +155,15 @@ public sealed class EnumValue(string name, string? value, string? api, string? t
     public string? Alias { get; } = alias;
     public string? Comment { get; } = comment;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        Groups = GroupRefs.Select(registry.GetGroup).ToImmutableArray();
-        foreach (var g in Groups)
+        if(level == Level.ResolveGroupRefs)
         {
-            g.Enums.Add(this);
+            Groups = GroupRefs.Select(registry.GetGroup).ToImmutableArray();
+            foreach (var g in Groups)
+            {
+                g.Enums.Add(this);
+            }
         }
     }
 }
@@ -145,13 +175,14 @@ public sealed class UnusedDef(string? start, string? end, string? vendor, string
     public string? Vendor { get; } = vendor;
     public string? Comment { get; } = comment;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
     }
 }
 
-public sealed class CommandDef(ProtoDef proto, ImmutableArray<ParamDef> @params, string? alias, string? vecequiv, GlxDef? glx, string? comment, string? ns)
+public sealed class CommandDef(
+    ProtoDef proto, ImmutableArray<ParamDef> @params, string? alias, string? vecequiv, GlxDef? glx, string? comment, string? ns)
 {
     public ProtoDef Proto { get; } = proto;
     public ImmutableArray<ParamDef> Params { get; } = @params;
@@ -161,15 +192,21 @@ public sealed class CommandDef(ProtoDef proto, ImmutableArray<ParamDef> @params,
     public string? Comment { get; } = comment;
     public string? Namespace { get; } = ns;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        Proto.Resolve(registry);
-        foreach (var p in Params) p.Resolve(registry);
-        Glx?.Resolve(registry);
+        Proto.Resolve(registry, level);
+        foreach (var p in Params) p.Resolve(registry, level);
+        Glx?.Resolve(registry, level);
+    }
+
+    public static CommandDef Null()
+    {
+        return new CommandDef(new ProtoDef(null, null, null, null, null, "<null>", []), [], null, null, null, null, null);
     }
 }
 
-public sealed class ProtoDef(string? group, string? kind, string? ptype, string? apiEntry, string? @class, string name, ImmutableArray<string> body)
+public sealed class ProtoDef(
+    string? group, string? kind, string? ptype, string? apiEntry, string? @class, string name, ImmutableArray<string> body)
 {
     public string? Group { get; } = group;
     public string? Kind { get; } = kind;
@@ -179,13 +216,14 @@ public sealed class ProtoDef(string? group, string? kind, string? ptype, string?
     public string Name { get; } = name;
     public ImmutableArray<string> Body { get; } = body;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
     }
 }
 
-public sealed class ParamDef(string? groupRef, string? kind, string? len, string? @class, string? ptype, string? apiEntry, string name, ImmutableArray<string> body)
+public sealed class ParamDef(
+    string? groupRef, string? kind, string? len, string? @class, string? ptype, string? apiEntry, string name, ImmutableArray<string> body)
 {
     public string? GroupRef { get; } = groupRef;
     public GroupDef? Group { get; private set; } = null;
@@ -197,11 +235,14 @@ public sealed class ParamDef(string? groupRef, string? kind, string? len, string
     public string Name { get; } = name;
     public ImmutableArray<string> Body { get; } = body;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        if (GroupRef != null)
+        if(level == Level.ResolveGroupRefs)
         {
-            Group = registry.GetGroup(GroupRef);
+            if (GroupRef != null)
+            {
+                Group = registry.GetGroup(GroupRef);
+            }
         }
     }
 }
@@ -211,13 +252,14 @@ public sealed class GlxDef(string? type, string? opcode)
     public string? Type { get; } = type;
     public string? Opcode { get; } = opcode;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
     }
 }
 
-public sealed class FeatureDef(string api, string name, string? protect, string number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
+public sealed class FeatureDef(
+    string api, string name, string? protect, string number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
     public string Api { get; } = api;
     public string Name { get; } = name;
@@ -227,14 +269,15 @@ public sealed class FeatureDef(string api, string name, string? protect, string 
     public ImmutableArray<InterfaceDef> Require { get; } = require;
     public ImmutableArray<InterfaceDef> Remove { get; } = remove;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        foreach (var r in Require) r.Resolve(registry);
-        foreach (var r in Remove) r.Resolve(registry);
+        foreach (var r in Require) r.Resolve(registry, level);
+        foreach (var r in Remove) r.Resolve(registry, level);
     }
 }
 
-public sealed class ExtensionDef(string name, string supported, string? protect, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
+public sealed class ExtensionDef(
+    string name, string supported, string? protect, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
     public string Name { get; } = name;
     public string Supported { get; } = supported;
@@ -243,60 +286,97 @@ public sealed class ExtensionDef(string name, string supported, string? protect,
     public ImmutableArray<InterfaceDef> Require { get; } = require;
     public ImmutableArray<InterfaceDef> Remove { get; } = remove;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        foreach (var r in Require) r.Resolve(registry);
-        foreach (var r in Remove) r.Resolve(registry);
+        foreach (var r in Require) r.Resolve(registry, level);
+        foreach (var r in Remove) r.Resolve(registry, level);
     }
 }
 
-public sealed class InterfaceDef(string? profile, string? api, string? comment, ImmutableArray<RequireEnum> enums, ImmutableArray<RequireCommand> commands, ImmutableArray<RequireType> types)
+public sealed class InterfaceDef(
+    string? profile, string? api, string? comment, ImmutableArray<InterfaceEnum> enums, ImmutableArray<InterfaceCommand> commands, ImmutableArray<InterfaceType> types)
 {
     public string? Profile { get; } = profile;
     public string? Api { get; } = api;
     public string? Comment { get; } = comment;
-    public ImmutableArray<RequireEnum> Enums { get; } = enums;
-    public ImmutableArray<RequireCommand> Commands { get; } = commands;
-    public ImmutableArray<RequireType> Types { get; } = types;
+    public ImmutableArray<InterfaceEnum> Enums { get; } = enums;
+    public ImmutableArray<InterfaceCommand> Commands { get; } = commands;
+    public ImmutableArray<InterfaceType> Types { get; } = types;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        foreach (var e in Enums) e.Resolve(registry);
-        foreach (var c in Commands) c.Resolve(registry);
-        foreach (var t in Types) t.Resolve(registry);
+        foreach (var e in Enums) e.Resolve(registry, level);
+        foreach (var c in Commands) c.Resolve(registry, level);
+        foreach (var t in Types) t.Resolve(registry, level);
     }
 }
 
-public sealed class RequireEnum(string name, string? comment)
+public sealed class InterfaceEnum(string enumValueRef, string? comment)
 {
-    public string Name { get; } = name;
+    public string EnumValueRef { get; } = enumValueRef;
+    public ImmutableArray<EnumValue> Value { get; private set; } = [];
     public string? Comment { get; } = comment;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        // Nothing to resolve
+        if (level == Level.ResolveInterface)
+        {
+            var found = registry.FindEnumValue(EnumValueRef);
+            if (found.Length > 0)
+            {
+                Value = found;
+            }
+            else
+            {
+                // todo(Gustav): report error
+            }
+        }
     }
 }
 
-public sealed class RequireCommand(string name, string? comment)
+public sealed class InterfaceCommand(string commandRef, string? comment)
 {
-    public string Name { get; } = name;
+    public string CommandRef { get; } = commandRef;
+    public CommandDef Command { get; private set; } = CommandDef.Null();
     public string? Comment { get; } = comment;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        // Nothing to resolve
+        if (level == Level.ResolveInterface)
+        {
+            var found = registry.FindCommand(CommandRef);
+            if(found != null)
+            {
+                Command = found;
+            }
+            else
+            {
+                // todo(Gustav): report error
+            }
+        }
     }
 }
 
-public sealed class RequireType(string name, string? comment)
+public sealed class InterfaceType(string typeRef, string? comment)
 {
-    public string Name { get; } = name;
+    public string TypeRef { get; } = typeRef;
+    public TypeDef Type { get; private set; } = TypeDef.Null();
     public string? Comment { get; } = comment;
 
-    public void Resolve(Registry registry)
+    internal void Resolve(Registry registry, Level level)
     {
-        // Nothing to resolve
+        if (level == Level.ResolveInterface)
+        {
+            var found = registry.FindType(TypeRef);
+            if (found != null)
+            {
+                Type = found;
+            }
+            else
+            {
+                // todo(Gustav): report error
+            }
+        }
     }
 }
 
@@ -531,16 +611,16 @@ public static class Parser
         var profile = el.ReadAttribute("profile");
         var api = el.ReadAttribute("api");
         var comment = el.ReadAttribute("comment");
-        var enums = el.ElementsNamed("enum").Select(e => new RequireEnum(
-            name: e.ReadAttribute("name") ?? "",
+        var enums = el.ElementsNamed("enum").Select(e => new InterfaceEnum(
+            enumValueRef: e.ReadAttribute("name") ?? "",
             comment: e.ReadAttribute("comment")
         )).ToImmutableArray();
-        var commands = el.ElementsNamed("command").Select(e => new RequireCommand(
-            name: e.ReadAttribute("name") ?? "",
+        var commands = el.ElementsNamed("command").Select(e => new InterfaceCommand(
+            commandRef: e.ReadAttribute("name") ?? "",
             comment: e.ReadAttribute("comment")
         )).ToImmutableArray();
-        var types = el.ElementsNamed("type").Select(e => new RequireType(
-            name: e.ReadAttribute("name") ?? "",
+        var types = el.ElementsNamed("type").Select(e => new InterfaceType(
+            typeRef: e.ReadAttribute("name") ?? "",
             comment: e.ReadAttribute("comment")
         )).ToImmutableArray();
         return new InterfaceDef(
@@ -556,6 +636,7 @@ public static class Parser
     internal static Registry Parse(El root)
     {
         // Parse <comment> elements at the root (registry-level comments)
+        AnsiConsole.WriteLine("Parsing XML...");
         var comments = root.ElementsNamed("comment")
             .SelectMany(e => e.ReadInnerText()).ToImmutableArray();
 
@@ -595,7 +676,9 @@ public static class Parser
             comments: comments
         );
 
-        reg.Resolve();
+        AnsiConsole.WriteLine("Resolving references...");
+        reg.Resolve(Level.ResolveGroupRefs);
+        reg.Resolve(Level.ResolveInterface);
 
         return reg;
     }

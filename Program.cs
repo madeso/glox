@@ -31,12 +31,14 @@ internal sealed class MainCommand : Command<MainCommand.Settings>
             var p = $"/{registryElementName}";
             using var doc = new El(errors, reg, p, p);
             var registry = Parser.Parse(doc);
+
             Writer.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry);
         }
         else
         {
             errors.Report("/", "/", $"Missing {registryElementName}");
         }
+        AnsiConsole.WriteLine("Program done.");
         return errors.Return();
     }
 }

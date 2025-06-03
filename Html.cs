@@ -2,6 +2,8 @@
 using System.Collections.Immutable;
 using Glox.Registry;
 using System.Xml.Linq;
+using Spectre.Console;
+using System.Collections.Generic;
 
 namespace Glox.Html;
 
@@ -10,6 +12,7 @@ public record Page(string FileName, string Title, string Body);
 public static class Writer
 {
     internal static string Encode(string s) => System.Net.WebUtility.HtmlEncode(s);
+    internal static string MakeLink(string link, string name) => $"<a href=\"{link}.html\">{Encode(name)}</a>";
 
     private static void WritePage(DirectoryInfo folder, Page page, string footer)
     {
@@ -28,9 +31,11 @@ public static class Writer
             """);
     }
 
+    private static string TypeLink(TypeDef t) => $"type_{t.Name}";
+    private static string LinkToType(TypeDef t) => MakeLink(TypeLink(t), t.Name);
     private static Page TypePage(Registry.TypeDef t) =>
         new Page(
-            FileName: $"type_{t.Name}",
+            FileName: TypeLink(t),
             Title: $"Type: {t.Name}",
             Body: $"""
                 <pre>{Encode(t.CodeBlock)}</pre>
@@ -55,7 +60,8 @@ public static class Writer
             """
         );
 
-    private static string LinkToGroupDef(GroupDef g) => $"<a href=\"{GroupDefLink(g)}.html\">{Encode(g.Name)}</a>";
+    private static string GroupDefLink(GroupDef g) => $"group_{g.Name}";
+    private static string LinkToGroupDef(GroupDef g) => MakeLink(GroupDefLink(g), g.Name);
     private static Page GroupPage(Registry.GroupDef g) =>
         new Page(
             FileName: GroupDefLink(g),
@@ -69,11 +75,6 @@ public static class Writer
                 </ul>
             """
         );
-
-    private static string GroupDefLink(GroupDef g)
-    {
-        return $"group_{g.Name}";
-    }
 
     private static Page EnumBlocksPage(Registry.EnumBlock e) =>
         new Page(
@@ -102,23 +103,27 @@ public static class Writer
             """
         );
 
-    private static string EnumValueList(IEnumerable<EnumValue> eEnums)
-    {
-        return $"""
-                <ul>
-                    {string.Join("", eEnums.Select(ev =>
-                        $"<li>{Encode(ev.Name)} = {Encode(ev.Value ?? "")} " +
-                        $"<small>Api: {Encode(ev.Api ?? "")}, Type: {Encode(ev.Type ?? "")}, " +
-                        $"Group: {Encode(string.Join(", ", ev.GroupRefs))}, Alias: {Encode(ev.Alias ?? "")}, " +
-                        $"Comment: {Encode(ev.Comment ?? "")}</small></li>"
-                    ))}
-                </ul>
-                """;
-    }
+    private static string EnumValueList(IEnumerable<EnumValue> eEnums) =>
+        $"""
+         <ul>
+             {string.Join("", eEnums.Select(x => SingleEnumValueLi(x).BuildLiCS()))}
+         </ul>
+         """;
 
+    private static PropsBuilder SingleEnumValueLi(EnumValue ev) => new PropsBuilder()
+        .AddEconded($"{Encode(ev.Name)} = {Encode(ev.Value ?? "")}")
+        .Add("Api", ev.Api)
+        .Add("Type", ev.Type)
+        .AddArray("Group", ev.Groups, LinkToGroupDef)
+        .Add("Alias", ev.Alias)
+        .Add("Comment", ev.Comment);
+
+
+    private static string CommandLink(CommandDef c) => $"command_{c.Proto.Name}";
+    private static string LinkToCommand(CommandDef c) => MakeLink(CommandLink(c), c.Proto.Name);
     private static Page CommandPage(Registry.CommandDef c) =>
         new Page(
-            FileName: $"command_{c.Proto.Name}",
+            FileName: CommandLink(c),
             Title: $"Command: {c.Proto.Name}",
             Body: $"""
                 <ul>
@@ -199,19 +204,19 @@ public static class Writer
             .AddArray("Types", r.Types, ResolveTypes)
             .BuildLiCS();
 
-    private static string ResolveTypes(RequireType arg) => new PropsBuilder()
-        .Add(arg.Name)
+    private static string ResolveTypes(InterfaceType arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
+        .AddEconded(LinkToType(arg.Type))
         .BuildCommaSeparated();
 
-    private static string ResolveCommands(RequireCommand arg) => new PropsBuilder()
-        .Add(arg.Name)
+    private static string ResolveCommands(InterfaceCommand arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
+        .AddEconded(LinkToCommand(arg.Command))
         .BuildCommaSeparated();
 
-    private static string ResolveEnum(RequireEnum arg) => new PropsBuilder()
-        .Add(arg.Name)
+    private static string ResolveEnum(InterfaceEnum arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
+        .AddSeveral(arg.Value, x => SingleEnumValueLi(x).BuildCommaSeparated())
         .BuildCommaSeparated();
 
     private static Page ExtensionPage(Registry.ExtensionDef ext) =>
@@ -258,11 +263,11 @@ public static class Writer
 
     private static (ImmutableArray<Page>, string footer) GenerateAllPages(Registry.Registry registry)
     {
-        var typePages = registry.Types.Select(TypePage).ToImmutableArray();
+        var typePages = registry.Types.Values.Select(TypePage).ToImmutableArray();
         var kindPages = registry.Kinds.Select(KindPage).ToImmutableArray();
-        var groupPages = registry.Groups.Values.Select(GroupPage).ToImmutableArray();
+        var groupPages = registry.GroupFromName.Values.Select(GroupPage).ToImmutableArray();
         var enumBlocks = registry.EnumBlocks.Select(EnumBlocksPage).ToImmutableArray();
-        var commandPages = registry.Commands.Select(CommandPage).ToImmutableArray();
+        var commandPages = registry.CommandFromName.Values.Select(CommandPage).ToImmutableArray();
         var featurePages = registry.Features.Select(FeaturePage).ToImmutableArray();
         var extensionPages = registry.Extensions.Select(ExtensionPage).ToImmutableArray();
 
@@ -300,7 +305,10 @@ public static class Writer
 
     public static void Write(DirectoryInfo folder, Registry.Registry registry)
     {
+        AnsiConsole.WriteLine("Generating pages...");
         var (pages, footer) = GenerateAllPages(registry);
+
+        AnsiConsole.WriteLine("Writing html...");
         foreach (var p in pages)
         {
             WritePage(folder, p, footer);
@@ -312,6 +320,11 @@ internal class PropsBuilder
 {
     private readonly List<string> _allProps = new();
 
+    public PropsBuilder AddEconded(string value)
+    {
+        _allProps.Add(value);
+        return this;
+    }
     public PropsBuilder Add(string? value)
     {
         if (value != null)
@@ -353,4 +366,10 @@ internal class PropsBuilder
 
     public string BuildLiCS()
         => $"<li>{BuildCommaSeparated()}</li>";
+
+    public PropsBuilder AddSeveral<T>(IEnumerable<T> list, Func<T, string> resolve)
+    {
+        _allProps.AddRange(list.Select(resolve));
+        return this;
+    }
 }
