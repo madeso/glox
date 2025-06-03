@@ -8,7 +8,7 @@ public sealed record Registry(
     ImmutableArray<TypeDef> Types,
     ImmutableArray<KindDef> Kinds,
     ImmutableArray<GroupDef> Groups,
-    ImmutableArray<EnumsDef> Enums,
+    ImmutableArray<EnumType> Enums,
     ImmutableArray<CommandDef> Commands,
     ImmutableArray<FeatureDef> Features,
     ImmutableArray<ExtensionDef> Extensions,
@@ -16,13 +16,11 @@ public sealed record Registry(
 );
 
 public sealed record TypeDef(
-    string? Name,
+    string Name,
     string? Requires,
-    string? Api,
     string? Comment,
-    string? InnerName,
-    string? Apientry,
-    ImmutableArray<string> Body
+    string? ApiEntry,
+    string CodeBlock
 );
 
 public sealed record KindDef(
@@ -39,24 +37,26 @@ public sealed record GroupEnumRef(
     string Name
 );
 
-public sealed record EnumsDef(
+public sealed record EnumType(
     string? Namespace,
     string? Type,
     string? Vendor,
     string? Comment,
     string? Start,
     string? End,
-    ImmutableArray<EnumDef> Enums,
+    string? Group, // Added group attribute
+    ImmutableArray<EnumValue> Enums,
     ImmutableArray<UnusedDef> Unused
 );
 
-public sealed record EnumDef(
+public sealed record EnumValue(
     string Name,
     string? Value,
     string? Api,
     string? Type,
     string? Group,
-    string? Alias
+    string? Alias,
+    string? Comment // Added comment attribute
 );
 
 public sealed record UnusedDef(
@@ -72,14 +72,16 @@ public sealed record CommandDef(
     string? Alias,
     string? VecEquiv,
     GlxDef? Glx,
-    string? Comment
+    string? Comment,
+    string? Namespace // Added namespace attribute from <commands>
 );
 
 public sealed record ProtoDef(
     string? Group,
     string? Kind,
     string? Ptype,
-    string? Apientry,
+    string? ApiEntry,
+    string? Class, // Added class attribute
     string Name,
     ImmutableArray<string> Body
 );
@@ -90,7 +92,7 @@ public sealed record ParamDef(
     string? Len,
     string? Class,
     string? Ptype,
-    string? Apientry,
+    string? ApiEntry,
     string Name,
     ImmutableArray<string> Body
 );
@@ -106,8 +108,8 @@ public sealed record FeatureDef(
     string? Protect,
     string Number,
     string? Comment,
-    ImmutableArray<RequireRemoveDef> Require,
-    ImmutableArray<RequireRemoveDef> Remove
+    ImmutableArray<InterfaceDef> Require,
+    ImmutableArray<InterfaceDef> Remove
 );
 
 public sealed record ExtensionDef(
@@ -115,11 +117,11 @@ public sealed record ExtensionDef(
     string Supported,
     string? Protect,
     string? Comment,
-    ImmutableArray<RequireRemoveDef> Require,
-    ImmutableArray<RequireRemoveDef> Remove
+    ImmutableArray<InterfaceDef> Require,
+    ImmutableArray<InterfaceDef> Remove
 );
 
-public sealed record RequireRemoveDef(
+public sealed record InterfaceDef(
     string? Profile,
     string? Api,
     string? Comment,
@@ -134,50 +136,20 @@ public sealed record RequireType(string Name, string? Comment);
 
 public static class Parser
 {
-    internal static Registry Parse(El root)
-    {
-        // Parse <comment> elements at the root (registry-level comments)
-        var comments = root.ElementsNamed("comment")
-            .SelectMany(e => e.ReadInnerText()).ToImmutableArray();
-
-        var types = root.ElementsNamed("types")
-            .SelectMany(t => t.ElementsNamed("type").Select(ParseTypeDef)).ToImmutableArray();
-
-        var kinds = root.ElementsNamed("kinds")
-            .SelectMany(k => k.ElementsNamed("kind").Select(ParseKindDef)).ToImmutableArray();
-
-        var groups = root.ElementsNamed("groups")
-            .SelectMany(g => g.ElementsNamed("group").Select(ParseGroupDef)).ToImmutableArray();
-
-        var enums = root.ElementsNamed("enums")
-            .Select(ParseEnumsDef).ToImmutableArray();
-
-        var commands = root.ElementsNamed("commands")
-            .SelectMany(c => c.ElementsNamed("command").Select(ParseCommandDef)).ToImmutableArray();
-
-        var features = root.ElementsNamed("feature")
-            .Select(ParseFeatureDef).ToImmutableArray();
-
-        var extensions = root.ElementsNamed("extensions")
-            .SelectMany(e => e.ElementsNamed("extension").Select(ParseExtensionDef)).ToImmutableArray();
-
-        return new Registry(types, kinds, groups, enums, commands, features, extensions, comments);
-    }
-
     private static TypeDef ParseTypeDef(El el)
     {
-        string? innerName = null;
-        string? apientry = null;
-        foreach (var n in el.ElementsNamed("name"))
-            innerName = n.ReadInnerText().FirstOrDefault();
-        foreach (var a in el.ElementsNamed("apientry"))
-            apientry = a.ReadInnerText().FirstOrDefault();
-        var name = el.ReadAttribute("name");
+        var name = el.ElementsNamed("name").Select(n => string.Join("", n.ReadInnerText())).FirstOrDefault() ?? el.ReadAttribute("name");
+        var count = el.ElementsNamed("apientry").Count();
         var requires = el.ReadAttribute("requires");
         var api = el.ReadAttribute("api");
         var comment = el.ReadAttribute("comment");
-        var body = el.ReadInnerText();
-        return new TypeDef(name, requires, api, comment, innerName, apientry, body);
+        var body = string.Join("", el.ReadInnerText());
+        if (name == null)
+        {
+            el.ReportError("Missing name for type");
+            name = "missing";
+        }
+        return new TypeDef(name, requires, api, comment, body);
     }
 
     private static KindDef ParseKindDef(El el)
@@ -195,7 +167,7 @@ public static class Parser
         return new GroupDef(name, enums);
     }
 
-    private static EnumsDef ParseEnumsDef(El el)
+    private static EnumType ParseEnumsType(El el)
     {
         var ns = el.ReadAttribute("namespace");
         var type = el.ReadAttribute("type");
@@ -203,12 +175,13 @@ public static class Parser
         var comment = el.ReadAttribute("comment");
         var start = el.ReadAttribute("start");
         var end = el.ReadAttribute("end");
-        var enums = el.ElementsNamed("enum").Select(ParseEnumDef).ToImmutableArray();
+        var group = el.ReadAttribute("group"); // Added group attribute
+        var enums = el.ElementsNamed("enum").Select(ParseEnumValue).ToImmutableArray();
         var unused = el.ElementsNamed("unused").Select(ParseUnusedDef).ToImmutableArray();
-        return new EnumsDef(ns, type, vendor, comment, start, end, enums, unused);
+        return new EnumType(ns, type, vendor, comment, start, end, group, enums, unused);
     }
 
-    private static EnumDef ParseEnumDef(El el)
+    private static EnumValue ParseEnumValue(El el)
     {
         var name = el.ReadAttribute("name") ?? "";
         var value = el.ReadAttribute("value");
@@ -216,7 +189,8 @@ public static class Parser
         var type = el.ReadAttribute("type");
         var group = el.ReadAttribute("group");
         var alias = el.ReadAttribute("alias");
-        return new EnumDef(name, value, api, type, group, alias);
+        var comment = el.ReadAttribute("comment"); // Added comment attribute
+        return new EnumValue(name, value, api, type, group, alias, comment);
     }
 
     private static UnusedDef ParseUnusedDef(El el)
@@ -228,7 +202,7 @@ public static class Parser
         return new UnusedDef(start, end, vendor, comment);
     }
 
-    private static CommandDef ParseCommandDef(El el)
+    private static CommandDef ParseCommandDef(El el, string? commandsNamespace)
     {
         var proto = el.ElementsNamed("proto").Select(ParseProtoDef).First();
         var @params = el.ElementsNamed("param").Select(ParseParamDef).ToImmutableArray();
@@ -236,18 +210,19 @@ public static class Parser
         var vecequiv = el.ElementsNamed("vecequiv").Select(a => a.ReadAttribute("name")).FirstOrDefault();
         var glx = el.ElementsNamed("glx").Select(ParseGlxDef).FirstOrDefault();
         var comment = el.ReadAttribute("comment");
-        return new CommandDef(proto, @params, alias, vecequiv, glx, comment);
+        return new CommandDef(proto, @params, alias, vecequiv, glx, comment, commandsNamespace);
     }
 
     private static ProtoDef ParseProtoDef(El el)
     {
         var group = el.ReadAttribute("group");
         var kind = el.ReadAttribute("kind");
+        var @class = el.ReadAttribute("class"); // Added class attribute
         var apientry = el.ElementsNamed("apientry").Select(a => a.ReadInnerText().FirstOrDefault()).FirstOrDefault();
         var ptype = el.ElementsNamed("ptype").Select(p => p.ReadInnerText().FirstOrDefault()).FirstOrDefault();
         var name = el.ElementsNamed("name").Select(n => n.ReadInnerText().FirstOrDefault()).FirstOrDefault() ?? "";
         var body = el.ReadInnerText();
-        return new ProtoDef(group, kind, ptype, apientry, name, body);
+        return new ProtoDef(group, kind, ptype, apientry, @class, name, body);
     }
 
     private static ParamDef ParseParamDef(El el)
@@ -293,7 +268,7 @@ public static class Parser
         return new ExtensionDef(name, supported, protect, comment, require, remove);
     }
 
-    private static RequireRemoveDef ParseRequireRemoveDef(El el)
+    private static InterfaceDef ParseRequireRemoveDef(El el)
     {
         var profile = el.ReadAttribute("profile");
         var api = el.ReadAttribute("api");
@@ -301,6 +276,40 @@ public static class Parser
         var enums = el.ElementsNamed("enum").Select(e => new RequireEnum(e.ReadAttribute("name") ?? "", e.ReadAttribute("comment"))).ToImmutableArray();
         var commands = el.ElementsNamed("command").Select(e => new RequireCommand(e.ReadAttribute("name") ?? "", e.ReadAttribute("comment"))).ToImmutableArray();
         var types = el.ElementsNamed("type").Select(e => new RequireType(e.ReadAttribute("name") ?? "", e.ReadAttribute("comment"))).ToImmutableArray();
-        return new RequireRemoveDef(profile, api, comment, enums, commands, types);
+        return new InterfaceDef(profile, api, comment, enums, commands, types);
+    }
+
+    internal static Registry Parse(El root)
+    {
+        // Parse <comment> elements at the root (registry-level comments)
+        var comments = root.ElementsNamed("comment")
+            .SelectMany(e => e.ReadInnerText()).ToImmutableArray();
+
+        var types = root.ElementsNamed("types")
+            .SelectMany(t => t.ElementsNamed("type").Select(ParseTypeDef)).ToImmutableArray();
+
+        var kinds = root.ElementsNamed("kinds")
+            .SelectMany(k => k.ElementsNamed("kind").Select(ParseKindDef)).ToImmutableArray();
+
+        var groups = root.ElementsNamed("groups")
+            .SelectMany(g => g.ElementsNamed("group").Select(ParseGroupDef)).ToImmutableArray();
+
+        var enums = root.ElementsNamed("enums")
+            .Select(ParseEnumsType).ToImmutableArray();
+
+        var commands = root.ElementsNamed("commands")
+            .SelectMany(c =>
+            {
+                var ns = c.ReadAttribute("namespace");
+                return c.ElementsNamed("command").Select(cmd => ParseCommandDef(cmd, ns));
+            }).ToImmutableArray();
+
+        var features = root.ElementsNamed("feature")
+            .Select(ParseFeatureDef).ToImmutableArray();
+
+        var extensions = root.ElementsNamed("extensions")
+            .SelectMany(e => e.ElementsNamed("extension").Select(ParseExtensionDef)).ToImmutableArray();
+
+        return new Registry(types, kinds, groups, enums, commands, features, extensions, comments);
     }
 }
