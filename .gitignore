@@ -1,0 +1,7 @@
+obj
+bin
+.vs
+Properties
+.DS_Store
+
+gl.xml
