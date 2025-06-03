@@ -1,8 +1,9 @@
-obj
-bin
+obj/
+bin/
 .vs
-Properties
+Properties/
 .DS_Store
 
+html/
 gl.xml
 doc.tex

@@ -4,7 +4,7 @@ using Spectre.Console.Cli;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Xml;
-
+using Glox.Html;
 using Glox.Registry;
 
 var app = new CommandApp<MainCommand>();
@@ -23,18 +23,19 @@ internal sealed class MainCommand : Command<MainCommand.Settings>
     {
         var x = new XmlDocument();
         x.LoadXml(File.ReadAllText(settings.OpenGlXml));
-        const string registry = "registry";
-        var reg = x[registry];
+        const string registryElementName = "registry";
+        var reg = x[registryElementName];
         var errors = new Errors();
         if(reg != null)
         {
-            var p = $"/{registry}";
+            var p = $"/{registryElementName}";
             using var doc = new El(errors, reg, p, p);
-            var re = Parser.Parse(doc);
+            var registry = Parser.Parse(doc);
+            Writer.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry);
         }
         else
         {
-            errors.Report("/", "/", $"Missing {registry}");
+            errors.Report("/", "/", $"Missing {registryElementName}");
         }
         return errors.Return();
     }
