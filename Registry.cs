@@ -1,14 +1,20 @@
 ﻿using System.Collections.Immutable;
 
-namespace glox_sharp;
+namespace Glox.Registry;
 
 // Data model for the Khronos OpenGL API Registry Schema
+
+public enum EnumKind
+{
+    Default,
+    Bitmask
+}
 
 public sealed record Registry(
     ImmutableArray<TypeDef> Types,
     ImmutableArray<KindDef> Kinds,
     ImmutableArray<GroupDef> Groups,
-    ImmutableArray<EnumType> Enums,
+    ImmutableArray<EnumType> Enums, // changed from EnumType
     ImmutableArray<CommandDef> Commands,
     ImmutableArray<FeatureDef> Features,
     ImmutableArray<ExtensionDef> Extensions,
@@ -39,12 +45,12 @@ public sealed record GroupEnumRef(
 
 public sealed record EnumType(
     string? Namespace,
-    string? Type,
+    EnumKind Type,
     string? Vendor,
     string? Comment,
     string? Start,
     string? End,
-    string? Group, // Added group attribute
+    string? Group,
     ImmutableArray<EnumValue> Enums,
     ImmutableArray<UnusedDef> Unused
 );
@@ -170,15 +176,27 @@ public static class Parser
     private static EnumType ParseEnumsType(El el)
     {
         var ns = el.ReadAttribute("namespace");
-        var type = el.ReadAttribute("type");
+        var typeStr = el.ReadAttribute("type");
+        var type = typeStr switch
+        {
+            "bitmask" => EnumKind.Bitmask,
+            null => EnumKind.Default,
+            _ => InvalidTypeStr(el, typeStr)
+        };
         var vendor = el.ReadAttribute("vendor");
         var comment = el.ReadAttribute("comment");
         var start = el.ReadAttribute("start");
         var end = el.ReadAttribute("end");
-        var group = el.ReadAttribute("group"); // Added group attribute
+        var group = el.ReadAttribute("group");
         var enums = el.ElementsNamed("enum").Select(ParseEnumValue).ToImmutableArray();
         var unused = el.ElementsNamed("unused").Select(ParseUnusedDef).ToImmutableArray();
         return new EnumType(ns, type, vendor, comment, start, end, group, enums, unused);
+
+        static EnumKind InvalidTypeStr(El el, string typeStr)
+        {
+            el.ReportError("Invalid type", $"Got type {typeStr}");
+            return EnumKind.Default;
+        }
     }
 
     private static EnumValue ParseEnumValue(El el)

@@ -4,7 +4,8 @@ using Spectre.Console.Cli;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Xml;
-using glox_sharp;
+
+using Glox.Registry;
 
 var app = new CommandApp<MainCommand>();
 return app.Run(args);
