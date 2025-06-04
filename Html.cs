@@ -41,7 +41,7 @@ internal static class Writer
             FileName: TypeLink(t),
             Title: $"Type: {t.Name}",
             Caption: null,
-            Body: new PropsBuilder()
+            Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("CodeBlock", t.CodeBlock, EscapeToCode)
                 .Add("Name", t.Name)
                 .Add("Requires", t.Requires)
@@ -55,7 +55,7 @@ internal static class Writer
             FileName: $"kind_{k.Name}",
             Title: $"Kind: {k.Name}",
             Caption: null,
-            Body: new PropsBuilder()
+            Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", k.Name)
                 .Add("Description", k.Desc)
                 .BuildUl()
@@ -69,7 +69,7 @@ internal static class Writer
             FileName: GroupDefLink(g),
             Title: $"Group: {g.Name}",
             Caption: null,
-            Body: new PropsBuilder()
+            Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", g.Name)
                 .AddArray("Enums", g.Enums, x => SingleEnumValueLi(x).BuildUl())
                 .BuildUl()
@@ -80,7 +80,7 @@ internal static class Writer
             FileName: $"enums_{e.Namespace ?? "none"}_{e.Index}",
             Title: $"Enums: {e.Namespace ?? "none"}",
             Caption: e.Comment,
-            Body: new PropsBuilder()
+            Body: new PropsBuilder(KeyStyle.Bold)
                     .Add("Namespace", e.Namespace ?? "")
                     .Add("Type", e.Type.ToString())
                     .Add("Vendor", e.Vendor)
@@ -117,7 +117,7 @@ internal static class Writer
             Title: $"Command: {c.Proto.Name}",
             Caption: null,
             Body:
-                new PropsBuilder()
+                new PropsBuilder(KeyStyle.Bold)
                     .Add("Name", c.Proto.Name)
                     .Add("Alias", c.Alias)
                     .Add("VecEquiv", c.VecEquiv)
@@ -145,7 +145,7 @@ internal static class Writer
             Title: $"Class: {c.Name}",
             Caption: null,
             Body:
-            new PropsBuilder()
+            new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", c.Name)
                 .AddArray("Used in", c.Params.Select(x => x.OwnerCommand), LinkToCommand)
                 .BuildUl()
@@ -173,7 +173,7 @@ internal static class Writer
             FileName: $"feature_{f.Name}",
             Title: $"Feature: {f.Name}",
             Caption: null,
-            Body: new PropsBuilder()
+            Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("API", f.Api)
                 .Add("Name", f.Name)
                 .Add("Protect", f.Protect)
@@ -213,7 +213,7 @@ internal static class Writer
             FileName: $"extension_{ext.Name}",
             Title: $"Extension: {ext.Name}",
             Caption: null,
-            Body: new PropsBuilder()
+            Body: new PropsBuilder(KeyStyle.Bold)
                     .Add("Name", ext.Name)
                     .AddArray("Supported", ext.Supported, Escape)
                     .Add("Protect", ext.Protect)
@@ -305,7 +305,12 @@ internal static class Writer
     }
 }
 
-internal class PropsBuilder
+enum KeyStyle
+{
+    Normal, Bold
+}
+
+internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
 {
     private readonly List<string> _allProps = new();
 
@@ -323,11 +328,19 @@ internal class PropsBuilder
         return this;
     }
 
+    internal string Key(string name)
+        => keyStyle switch
+        {
+            KeyStyle.Normal => Writer.Escape(name),
+            KeyStyle.Bold => $"<b>{Writer.Escape(name)}</b>",
+            _ => throw new ArgumentOutOfRangeException(nameof(keyStyle), keyStyle, null)
+        };
+
     internal PropsBuilder Add(string name, string? value)
     {
         if (value != null)
         {
-            _allProps.Add($"{Writer.Escape(name)}: {Writer.Escape(value)}");
+            _allProps.Add($"{Key(name)}: {Writer.Escape(value)}");
         }
         return this;
     }
@@ -336,7 +349,7 @@ internal class PropsBuilder
     {
         if (value != null)
         {
-            _allProps.Add($"{Writer.Escape(name)}: {converter(value)}");
+            _allProps.Add($"{Key(name)}: {converter(value)}");
         }
         return this;
     }
@@ -347,7 +360,7 @@ internal class PropsBuilder
         if (r.Length > 0)
         {
             var value = string.Join("", r.Select(x => $"<li>{x}</li>"));
-            _allProps.Add($"{Writer.Escape(name)}: <ul>{value}</ul>");
+            _allProps.Add($"{Key(name)}: <ul>{value}</ul>");
         }
         return this;
     }
