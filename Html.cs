@@ -101,11 +101,21 @@ internal static class Writer
 
     private static PropsBuilder PropsFromEnumValue(EnumValue ev) => new PropsBuilder()
         .AddEncoded($"{Escape(ev.Name)} = {Escape(ev.Value ?? "")}")
-        .Add("Api", ev.Api)
+        .AddStruct("Api", ev.Api, HtmlFromApi)
         .Add("Type", ev.Type)
         .AddArray("Group", ev.Groups, LinkToGroup)
         .Add("Alias", ev.Alias)
         .Add("Comment", ev.Comment);
+
+    private static string HtmlFromApi(NamedApi api) => api switch
+    {
+        NamedApi.GL => "OpenGL",
+        NamedApi.GlEmbedded1 => "OpenGL ES 1",
+        NamedApi.GlEmbedded2 => "OpenGL ES 2",
+        NamedApi.GlSafety1 => "OpenGL Safety Critical 1",
+        NamedApi.GlSafety2 => "OpenGL Safety Critical 2",
+        _ => throw new ArgumentOutOfRangeException(nameof(api), api, null)
+    };
 
     private static string FileForCommand(CommandDef c) => $"command_{c.Proto.Name}";
     private static string LinkToCommand(CommandDef c) => MakeLink(FileForCommand(c), c.Proto.Name);
@@ -125,7 +135,7 @@ internal static class Writer
                     .Add("Prop Kind", c.Proto.Kind)
                     .Add("Prop Ptype", c.Proto.Ptype)
                     .Add("Prop ApiEntry", c.Proto.ApiEntry)
-                    .Add("Prop Class", c.Proto.ClassRef)
+                    .Add("Prop Class", c.Proto.Klass, LinkToKlass)
                     .Add("Prop Name", c.Proto.Name)
                     .AddArray("Prop Body", c.Proto.Body, EscapeToCode)
                     .AddArray("Params", c.Params, x => PropsForParam(x).BuildCommaSeparated())
@@ -171,7 +181,7 @@ internal static class Writer
             Title: $"Feature: {f.Name}",
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
-                .Add("API", f.Api)
+                .AddStruct("API", f.Api, HtmlFromApi)
                 .Add("Name", f.Name)
                 .Add("Protect", f.Protect)
                 .Add("Number", f.Number)
@@ -184,7 +194,7 @@ internal static class Writer
     private static PropsBuilder PropsForInterface(InterfaceDef r) =>
         new PropsBuilder()
             .Add("Profile", r.Profile)
-            .Add("Api", r.Api)
+            .AddStruct("Api", r.Api, HtmlFromApi)
             .Add("Comment", r.Comment)
             .AddArray("Enums", r.Enums, x => PropsForInterfaceEnum(x).BuildCommaSeparated() )
             .AddArray("Commands", r.Commands, x => PropsForInterfaceCommand(x).BuildCommaSeparated() )
@@ -345,6 +355,21 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
         if (value != null)
         {
             _allProps.Add($"{Key(name)}: {converter(value)}");
+        }
+        return this;
+    }
+
+    internal PropsBuilder AddStruct<T>(string name, T value, Func<T, string> converter) where T : struct
+    {
+        _allProps.Add($"{Key(name)}: {converter(value)}");
+        return this;
+    }
+
+    internal PropsBuilder AddStruct<T>(string name, T? value, Func<T, string> converter) where T : struct
+    {
+        if (value.HasValue)
+        {
+            _allProps.Add($"{Key(name)}: {converter(value.Value)}");
         }
         return this;
     }

@@ -177,11 +177,11 @@ internal sealed class EnumBlock(
 }
 
 internal sealed class EnumValue(
-    string name, string? value, string? api, string? type, ImmutableArray<string> groupRefs, string? alias, string? comment)
+    string name, string? value, NamedApi? api, string? type, ImmutableArray<string> groupRefs, string? alias, string? comment)
 {
     internal string Name { get; } = name;
     internal string? Value { get; } = value;
-    internal string? Api { get; } = api;
+    internal NamedApi? Api { get; } = api;
     internal string? Type { get; } = type;
     internal ImmutableArray<string> GroupRefs { get; } = groupRefs;
     internal ImmutableArray<GroupDef> Groups { get; private set; } = [];
@@ -315,10 +315,15 @@ internal sealed class GlxDef(string? type, string? opcode)
     }
 }
 
-internal sealed class FeatureDef(
-    string api, string name, string? protect, string number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
+internal enum NamedApi
 {
-    internal string Api { get; } = api;
+    GL, GlEmbedded1, GlEmbedded2, GlSafety1, GlSafety2
+}
+
+internal sealed class FeatureDef(
+    NamedApi? api, string name, string? protect, string number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
+{
+    internal NamedApi? Api { get; } = api;
     internal string Name { get; } = name;
     internal string? Protect { get; } = protect;
     internal string Number { get; } = number;
@@ -371,10 +376,10 @@ internal sealed class ExtensionDef(
 }
 
 internal sealed class InterfaceDef(
-    string? profile, string? api, string? comment, ImmutableArray<InterfaceEnum> enums, ImmutableArray<InterfaceCommand> commands, ImmutableArray<InterfaceType> types)
+    string? profile, NamedApi? api, string? comment, ImmutableArray<InterfaceEnum> enums, ImmutableArray<InterfaceCommand> commands, ImmutableArray<InterfaceType> types)
 {
     internal string? Profile { get; } = profile;
-    internal string? Api { get; } = api;
+    internal NamedApi? Api { get; } = api;
     internal string? Comment { get; } = comment;
     internal ImmutableArray<InterfaceEnum> Enums { get; } = enums;
     internal ImmutableArray<InterfaceCommand> Commands { get; } = commands;
@@ -546,7 +551,7 @@ internal static class Parser
     {
         var name = el.ReadAttribute("name") ?? "";
         var value = el.ReadAttribute("value");
-        var api = el.ReadAttribute("api");
+        var api = ParseApi(el.Location, el.ReadAttribute("api"));
         var type = el.ReadAttribute("type");
         var groupStr = el.ReadAttribute("group");
         var group = groupStr?.Split(",", StringSplitOptions.TrimEntries).ToImmutableArray() ?? [];
@@ -561,6 +566,26 @@ internal static class Parser
             alias: alias,
             comment: comment
         );
+    }
+
+    private static NamedApi? ParseApi(Location location, string? attribute)
+    {
+        if (attribute == null) return null;
+        return attribute switch
+        {
+            "gl" => NamedApi.GL,
+            "gles1" => NamedApi.GlEmbedded1,
+            "gles2" => NamedApi.GlEmbedded2,
+            "glsc1" => NamedApi.GlSafety1,
+            "glsc2" => NamedApi.GlSafety2,
+            _ => ReportInvalidAttribute()
+        };
+
+        NamedApi? ReportInvalidAttribute()
+        {
+            location.ReportError("Invalid attribute detected", attribute);
+            return null;
+        }
     }
 
     private static UnusedDef ParseUnusedDef(El el)
@@ -654,7 +679,7 @@ internal static class Parser
 
     private static FeatureDef ParseFeatureDef(El el)
     {
-        var api = el.ReadAttribute("api") ?? "";
+        var api = ParseApi(el.Location, el.ReadAttribute("api"));
         var name = el.ReadAttribute("name") ?? "";
         var protect = el.ReadAttribute("protect");
         var number = el.ReadAttribute("number") ?? "";
@@ -693,7 +718,7 @@ internal static class Parser
     private static InterfaceDef ParseRequireRemoveDef(El el)
     {
         var profile = el.ReadAttribute("profile");
-        var api = el.ReadAttribute("api");
+        var api = ParseApi(el.Location, el.ReadAttribute("api"));
         var comment = el.ReadAttribute("comment");
         var enums = el.ElementsNamed("enum").Select(e => new InterfaceEnum(e.Location,
             enumValueRef: e.ReadAttribute("name") ?? "",
