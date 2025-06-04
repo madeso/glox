@@ -34,11 +34,11 @@ internal static class Writer
             """);
     }
 
-    private static string TypeLink(TypeDef t) => $"type_{t.Name}";
-    private static string LinkToType(TypeDef t) => MakeLink(TypeLink(t), t.Name);
-    private static Page TypePage(Registry.TypeDef t) =>
+    private static string FileForType(TypeDef t) => $"type_{t.Name}";
+    private static string LinkToType(TypeDef t) => MakeLink(FileForType(t), t.Name);
+    private static Page TypePage(TypeDef t) =>
         new Page(
-            FileName: TypeLink(t),
+            FileName: FileForType(t),
             Title: $"Type: {t.Name}",
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
@@ -47,7 +47,7 @@ internal static class Writer
                 .Add("Requires", t.Requires)
                 .Add("Comment", t.Comment)
                 .Add("ApiEntry", t.ApiEntry)
-                .BuildUl()
+                .BuildList()
         );
 
     private static Page KindPage(Registry.KindDef k) =>
@@ -58,21 +58,20 @@ internal static class Writer
             Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", k.Name)
                 .Add("Description", k.Desc)
-                .BuildUl()
+                .BuildList()
         );
 
-    private static string GroupDefLink(GroupDef g) => $"group_{g.Name}";
-    private static string LinkToGroupDef(GroupDef g) => MakeLink(GroupDefLink(g), g.Name);
-
+    private static string FileForGroup(GroupDef g) => $"group_{g.Name}";
+    private static string LinkToGroup(GroupDef g) => MakeLink(FileForGroup(g), g.Name);
     private static Page GroupPage(Registry.GroupDef g) =>
         new Page(
-            FileName: GroupDefLink(g),
+            FileName: FileForGroup(g),
             Title: $"Group: {g.Name}",
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", g.Name)
-                .AddArray("Enums", g.Enums, x => SingleEnumValueLi(x).BuildUl())
-                .BuildUl()
+                .AddArray("Enums", g.Enums, x => PropsFromEnumValue(x).BuildList())
+                .BuildList()
         );
 
     private static Page EnumBlocksPage(Registry.EnumBlock e) =>
@@ -87,33 +86,32 @@ internal static class Writer
                     .Add("Comment", e.Comment)
                     .Add("Start", e.Start)
                     .Add("End", e.End)
-                    .Add("Group", e.Group, LinkToGroupDef)
-                    .AddArray("Enums", e.Enums, x => SingleEnumValueLi(x).BuildUl())
-                    .AddArray("Unused", e.Unused, x => UnusedToString(x).BuildLiCS())
-                    .BuildUl()
+                    .Add("Group", e.Group, LinkToGroup)
+                    .AddArray("Enums", e.Enums, x => PropsFromEnumValue(x).BuildList())
+                    .AddArray("Unused", e.Unused, x => PropsFromUnused(x).BuildLiCS())
+                    .BuildList()
         );
 
-    private static PropsBuilder UnusedToString(UnusedDef u) =>
+    private static PropsBuilder PropsFromUnused(UnusedDef u) =>
         new PropsBuilder()
             .Add("Start", u.Start)
             .Add("End", u.End)
             .Add("Vendor", u.Vendor)
             .Add("Comment", u.Comment);
 
-    private static PropsBuilder SingleEnumValueLi(EnumValue ev) => new PropsBuilder()
-        .AddEconded($"{Escape(ev.Name)} = {Escape(ev.Value ?? "")}")
+    private static PropsBuilder PropsFromEnumValue(EnumValue ev) => new PropsBuilder()
+        .AddEncoded($"{Escape(ev.Name)} = {Escape(ev.Value ?? "")}")
         .Add("Api", ev.Api)
         .Add("Type", ev.Type)
-        .AddArray("Group", ev.Groups, LinkToGroupDef)
+        .AddArray("Group", ev.Groups, LinkToGroup)
         .Add("Alias", ev.Alias)
         .Add("Comment", ev.Comment);
 
-
-    private static string CommandLink(CommandDef c) => $"command_{c.Proto.Name}";
-    private static string LinkToCommand(CommandDef c) => MakeLink(CommandLink(c), c.Proto.Name);
+    private static string FileForCommand(CommandDef c) => $"command_{c.Proto.Name}";
+    private static string LinkToCommand(CommandDef c) => MakeLink(FileForCommand(c), c.Proto.Name);
     private static Page CommandPage(Registry.CommandDef c) =>
         new Page(
-            FileName: CommandLink(c),
+            FileName: FileForCommand(c),
             Title: $"Command: {c.Proto.Name}",
             Caption: null,
             Body:
@@ -130,37 +128,36 @@ internal static class Writer
                     .Add("Prop Class", c.Proto.ClassRef)
                     .Add("Prop Name", c.Proto.Name)
                     .AddArray("Prop Body", c.Proto.Body, EscapeToCode)
-                    .AddArray("Params", c.Params, x => ParamDefToHtml(x).BuildCommaSeparated())
-                    .Add("Glx", c.Glx, GlxToHtml)
-                    .BuildUl()
+                    .AddArray("Params", c.Params, x => PropsForParam(x).BuildCommaSeparated())
+                    .Add("Glx", c.Glx, x => PropsForGlx(x).BuildCommaSeparated())
+                    .BuildList()
 
         );
 
 
-    private static string KlassLink(Klass c) => $"class_{c.Name}";
-    private static string LinkToKlass(Klass c) => MakeLink(KlassLink(c), c.Name);
+    private static string FileForKlass(Klass c) => $"class_{c.Name}";
+    private static string LinkToKlass(Klass c) => MakeLink(FileForKlass(c), c.Name);
     private static Page KlassPage(Registry.Klass c) =>
         new Page(
-            FileName: KlassLink(c),
+            FileName: FileForKlass(c),
             Title: $"Class: {c.Name}",
             Caption: null,
             Body:
             new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", c.Name)
                 .AddArray("Used in", c.Params.Select(x => x.OwnerCommand), LinkToCommand)
-                .BuildUl()
+                .BuildList()
 
         );
 
-    private static string GlxToHtml(GlxDef glx) => new PropsBuilder()
+    private static PropsBuilder PropsForGlx(GlxDef glx) => new PropsBuilder()
         .Add("Type", glx.Type)
-        .Add("Opcode", glx.Opcode)
-        .BuildCommaSeparated();
+        .Add("Opcode", glx.Opcode);
 
-    private static PropsBuilder ParamDefToHtml(ParamDef p) =>
+    private static PropsBuilder PropsForParam(ParamDef p) =>
         new PropsBuilder()
             .Add("Name", p.Name)
-            .Add("Group", p.Group, LinkToGroupDef)
+            .Add("Group", p.Group, LinkToGroup)
             .Add("Kind", p.Kind)
             .Add("Len", p.Len)
             .Add("Class", p.Klass, LinkToKlass)
@@ -168,7 +165,7 @@ internal static class Writer
             .Add("ApiEntry", p.ApiEntry)
             .AddArray("Body", p.Body, EscapeToCode);
 
-    private static Page FeaturePage(Registry.FeatureDef f) =>
+    private static Page FeaturePage(FeatureDef f) =>
         new Page(
             FileName: $"feature_{f.Name}",
             Title: $"Feature: {f.Name}",
@@ -179,34 +176,31 @@ internal static class Writer
                 .Add("Protect", f.Protect)
                 .Add("Number", f.Number)
                 .Add("Comment", f.Comment)
-                .AddArray("Require", f.Require, x => InterfaceToHtml(x).BuildCommaSeparated())
-                .AddArray("Remove", f.Remove, x => InterfaceToHtml(x).BuildCommaSeparated())
-                .BuildUl()
+                .AddArray("Require", f.Require, x => PropsForInterface(x).BuildCommaSeparated())
+                .AddArray("Remove", f.Remove, x => PropsForInterface(x).BuildCommaSeparated())
+                .BuildList()
     );
 
-    private static PropsBuilder InterfaceToHtml(InterfaceDef r) =>
+    private static PropsBuilder PropsForInterface(InterfaceDef r) =>
         new PropsBuilder()
             .Add("Profile", r.Profile)
             .Add("Api", r.Api)
             .Add("Comment", r.Comment)
-            .AddArray("Enums", r.Enums, ResolveEnum)
-            .AddArray("Commands", r.Commands, ResolveCommands)
-            .AddArray("Types", r.Types, ResolveTypes);
+            .AddArray("Enums", r.Enums, x => PropsForInterfaceEnum(x).BuildCommaSeparated() )
+            .AddArray("Commands", r.Commands, x => PropsForInterfaceCommand(x).BuildCommaSeparated() )
+            .AddArray("Types", r.Types, x => PropsForInterfaceType(x).BuildCommaSeparated());
 
-    private static string ResolveTypes(InterfaceType arg) => new PropsBuilder()
+    private static PropsBuilder PropsForInterfaceType(InterfaceType arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
-        .AddEconded(LinkToType(arg.Type))
-        .BuildCommaSeparated();
+        .AddEncoded(LinkToType(arg.Type));
 
-    private static string ResolveCommands(InterfaceCommand arg) => new PropsBuilder()
+    private static PropsBuilder PropsForInterfaceCommand(InterfaceCommand arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
-        .AddEconded(LinkToCommand(arg.Command))
-        .BuildCommaSeparated();
+        .AddEncoded(LinkToCommand(arg.Command));
 
-    private static string ResolveEnum(InterfaceEnum arg) => new PropsBuilder()
+    private static PropsBuilder PropsForInterfaceEnum(InterfaceEnum arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
-        .AddSeveral(arg.Value, x => SingleEnumValueLi(x).BuildCommaSeparated())
-        .BuildCommaSeparated();
+        .AddSeveral(arg.Value, x => PropsFromEnumValue(x).BuildCommaSeparated());
 
     private static Page ExtensionPage(Registry.ExtensionDef ext) =>
         new Page(
@@ -218,9 +212,9 @@ internal static class Writer
                     .AddArray("Supported", ext.Supported, Escape)
                     .Add("Protect", ext.Protect)
                     .Add("Comment", ext.Comment)
-                    .AddArray("Require", ext.Require, x => InterfaceToHtml(x).BuildCommaSeparated())
-                    .AddArray("Remove", ext.Remove, x => InterfaceToHtml(x).BuildCommaSeparated())
-                    .BuildUl()
+                    .AddArray("Require", ext.Require, x => PropsForInterface(x).BuildCommaSeparated())
+                    .AddArray("Remove", ext.Remove, x => PropsForInterface(x).BuildCommaSeparated())
+                    .BuildList()
         );
 
     private static Page CreateListingPage(string name, IEnumerable<Page> pages)
@@ -237,7 +231,7 @@ internal static class Writer
         );
     }
 
-    private static string CreateHtmlFooter(IEnumerable<Page> pages)
+    private static string HtmlForFooter(IEnumerable<Page> pages)
     {
         var links = string.Join(
             " | ",
@@ -269,7 +263,7 @@ internal static class Writer
             CreateListingPage("Classes", klassPages)
         };
 
-        var footer = CreateHtmlFooter(listingPages);
+        var htmlFooter = HtmlForFooter(listingPages);
 
         var indexPage = new Page(
             FileName: "index",
@@ -289,7 +283,7 @@ internal static class Writer
                 .Concat(listingPages)
                 .Concat(klassPages)
                 .Append(indexPage)
-        ], footer);
+        ], htmlFooter);
     }
 
     internal static void Write(DirectoryInfo folder, Registry.Registry registry)
@@ -314,17 +308,9 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
 {
     private readonly List<string> _allProps = new();
 
-    internal PropsBuilder AddEconded(string value)
+    internal PropsBuilder AddEncoded(string value)
     {
         _allProps.Add(value);
-        return this;
-    }
-    internal PropsBuilder Add(string? value)
-    {
-        if (value != null)
-        {
-            _allProps.Add($"{Writer.Escape(value)}");
-        }
         return this;
     }
 
@@ -335,6 +321,15 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
             KeyStyle.Bold => $"<b>{Writer.Escape(name)}</b>",
             _ => throw new ArgumentOutOfRangeException(nameof(keyStyle), keyStyle, null)
         };
+
+    internal PropsBuilder Add(string? value)
+    {
+        if (value != null)
+        {
+            _allProps.Add($"{Writer.Escape(value)}");
+        }
+        return this;
+    }
 
     internal PropsBuilder Add(string name, string? value)
     {
@@ -365,18 +360,18 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
         return this;
     }
 
-    internal string BuildCommaSeparated() => string.Join(", ", _allProps);
-
-    internal string BuildLiCS()
-        => $"<li>{BuildCommaSeparated()}</li>";
-
     internal PropsBuilder AddSeveral<T>(IEnumerable<T> list, Func<T, string> resolve)
     {
         _allProps.AddRange(list.Select(resolve));
         return this;
     }
 
-    internal string BuildUl()
+    internal string BuildCommaSeparated() => string.Join(", ", _allProps);
+
+    internal string BuildLiCS()
+        => $"<li>{BuildCommaSeparated()}</li>";
+
+    internal string BuildList()
     {
         var all = _allProps.Select(x => $"<li>{x}</li>");
         var li = string.Join("", all);
