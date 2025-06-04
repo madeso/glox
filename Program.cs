@@ -43,27 +43,19 @@ internal sealed class MainCommand : Command<MainCommand.Settings>
     }
 }
 
-internal class Location
+internal class Location(Errors errors, string path, string genericPath)
 {
-    public Location(Errors errors, string path, string genericPath)
-    {
-        _path = path;
-        _genericPath = genericPath;
-        _errors = errors;
-    }
-
-    private readonly Errors _errors;
-    private readonly string _path;
-    private readonly string _genericPath;
-
     public void ReportError(string message, string? note = null)
     {
-        _errors.Report(_path, _genericPath, message, note);
+        errors.Report(path, genericPath, message, note);
     }
 
     public Location Sub(string name, int index)
     {
-        return new Location(_errors, $"{_path}/{name}[{index}]", $"{_genericPath}/{name}");
+        return new Location(errors,
+            path: $"{path}/{name}[{index}]",
+            genericPath: $"{genericPath}/{name}"
+            );
     }
 }
 

@@ -5,15 +5,17 @@ using System.Xml.Linq;
 using Spectre.Console;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Runtime.CompilerServices;
 
 namespace Glox.Html;
 
-internal record Page(string FileName, string Title, string Body);
+internal record Page(string FileName, string Title, string? Caption, string Body);
 
 internal static class Writer
 {
-    internal static string Encode(string s) => System.Net.WebUtility.HtmlEncode(s);
-    internal static string MakeLink(string link, string name) => $"<a href=\"{link}.html\">{Encode(name)}</a>";
+    internal static string Escape(string s) => System.Net.WebUtility.HtmlEncode(s);
+    internal static string EscapeToCode(string s) => $"<pre><code>{Escape(s)}</code></pre>";
+    internal static string MakeLink(string link, string name) => $"<a href=\"{link}.html\">{Escape(name)}</a>";
 
     private static void WritePage(DirectoryInfo folder, Page page, string footer)
     {
@@ -38,81 +40,68 @@ internal static class Writer
         new Page(
             FileName: TypeLink(t),
             Title: $"Type: {t.Name}",
-            Body: $"""
-                <pre>{Encode(t.CodeBlock)}</pre>
-                <ul>
-                    <li><b>Name:</b> {Encode(t.Name)}</li>
-                    <li><b>Requires:</b> {Encode(t.Requires ?? "")}</li>
-                    <li><b>Comment:</b> {Encode(t.Comment ?? "")}</li>
-                    <li><b>ApiEntry:</b> {Encode(t.ApiEntry ?? "")}</li>
-                </ul>
-            """
+            Caption: null,
+            Body: new PropsBuilder()
+                .Add("CodeBlock", t.CodeBlock, EscapeToCode)
+                .Add("Name", t.Name)
+                .Add("Requires", t.Requires)
+                .Add("Comment", t.Comment)
+                .Add("ApiEntry", t.ApiEntry)
+                .BuildUl()
         );
 
     private static Page KindPage(Registry.KindDef k) =>
         new Page(
             FileName: $"kind_{k.Name}",
             Title: $"Kind: {k.Name}",
-            Body: $"""
-                <ul>
-                    <li><b>Name:</b> {Encode(k.Name)}</li>
-                    <li><b>Description:</b> {Encode(k.Desc ?? "")}</li>
-                </ul>
-            """
+            Caption: null,
+            Body: new PropsBuilder()
+                .Add("Name", k.Name)
+                .Add("Description", k.Desc)
+                .BuildUl()
         );
 
     private static string GroupDefLink(GroupDef g) => $"group_{g.Name}";
     private static string LinkToGroupDef(GroupDef g) => MakeLink(GroupDefLink(g), g.Name);
+
     private static Page GroupPage(Registry.GroupDef g) =>
         new Page(
             FileName: GroupDefLink(g),
             Title: $"Group: {g.Name}",
-            Body: $"""
-                <ul>
-                    <li><b>Name:</b> {Encode(g.Name)}</li>
-                    <li><b>Enums:</b>
-                        {EnumValueList(g.Enums)}
-                    </li>
-                </ul>
-            """
+            Caption: null,
+            Body: new PropsBuilder()
+                .Add("Name", g.Name)
+                .AddArray("Enums", g.Enums, x => SingleEnumValueLi(x).BuildUl())
+                .BuildUl()
         );
 
     private static Page EnumBlocksPage(Registry.EnumBlock e) =>
         new Page(
             FileName: $"enums_{e.Namespace ?? "none"}_{e.Index}",
             Title: $"Enums: {e.Namespace ?? "none"}",
-            Body: $"""
-                <ul>
-                    <li><b>Namespace:</b> {Encode(e.Namespace ?? "")}</li>
-                    <li><b>Type:</b> {Encode(e.Type.ToString())}</li>
-                    <li><b>Vendor:</b> {Encode(e.Vendor ?? "")}</li>
-                    <li><b>Comment:</b> {Encode(e.Comment ?? "")}</li>
-                    <li><b>Start:</b> {Encode(e.Start ?? "")}</li>
-                    <li><b>End:</b> {Encode(e.End ?? "")}</li>
-                    <li><b>Group:</b> {Encode(e.Group ?? "")}</li>
-                    <li><b>Enums:</b>
-                        {EnumValueList(e.Enums)}
-                    </li>
-                    <li><b>Unused:</b>
-                        <ul>
-                            {string.Join("", e.Unused.Select(u =>
-                                $"<li>Start: {Encode(u.Start ?? "")}, End: {Encode(u.End ?? "")}, Vendor: {Encode(u.Vendor ?? "")}, Comment: {Encode(u.Comment ?? "")}</li>"
-                            ))}
-                        </ul>
-                    </li>
-                </ul>
-            """
+            Caption: e.Comment,
+            Body: new PropsBuilder()
+                    .Add("Namespace", e.Namespace ?? "")
+                    .Add("Type", e.Type.ToString())
+                    .Add("Vendor", e.Vendor)
+                    .Add("Comment", e.Comment)
+                    .Add("Start", e.Start)
+                    .Add("End", e.End)
+                    .Add("Group", e.Group, LinkToGroupDef)
+                    .AddArray("Enums", e.Enums, x => SingleEnumValueLi(x).BuildUl())
+                    .AddArray("Unused", e.Unused, x => UnusedToString(x).BuildLiCS())
+                    .BuildUl()
         );
 
-    private static string EnumValueList(IEnumerable<EnumValue> eEnums) =>
-        $"""
-         <ul>
-             {string.Join("", eEnums.Select(x => SingleEnumValueLi(x).BuildLiCS()))}
-         </ul>
-         """;
+    private static PropsBuilder UnusedToString(UnusedDef u) =>
+        new PropsBuilder()
+            .Add("Start", u.Start)
+            .Add("End", u.End)
+            .Add("Vendor", u.Vendor)
+            .Add("Comment", u.Comment);
 
     private static PropsBuilder SingleEnumValueLi(EnumValue ev) => new PropsBuilder()
-        .AddEconded($"{Encode(ev.Name)} = {Encode(ev.Value ?? "")}")
+        .AddEconded($"{Escape(ev.Name)} = {Escape(ev.Value ?? "")}")
         .Add("Api", ev.Api)
         .Add("Type", ev.Type)
         .AddArray("Group", ev.Groups, LinkToGroupDef)
@@ -126,8 +115,9 @@ internal static class Writer
         new Page(
             FileName: CommandLink(c),
             Title: $"Command: {c.Proto.Name}",
+            Caption: null,
             Body:
-                new PropsBuilder()            
+                new PropsBuilder()
                     .Add("Name", c.Proto.Name)
                     .Add("Alias", c.Alias)
                     .Add("VecEquiv", c.VecEquiv)
@@ -137,13 +127,29 @@ internal static class Writer
                     .Add("Prop Kind", c.Proto.Kind)
                     .Add("Prop Ptype", c.Proto.Ptype)
                     .Add("Prop ApiEntry", c.Proto.ApiEntry)
-                    .Add("Prop Class", c.Proto.Class)
+                    .Add("Prop Class", c.Proto.ClassRef)
                     .Add("Prop Name", c.Proto.Name)
-                    .AddArray("Prop Body", c.Proto.Body, Encode)
+                    .AddArray("Prop Body", c.Proto.Body, EscapeToCode)
                     .AddArray("Params", c.Params, x => ParamDefToHtml(x).BuildCommaSeparated())
                     .Add("Glx", c.Glx, GlxToHtml)
                     .BuildUl()
-                
+
+        );
+
+
+    private static string KlassLink(Klass c) => $"class_{c.Name}";
+    private static string LinkToKlass(Klass c) => MakeLink(KlassLink(c), c.Name);
+    private static Page KlassPage(Registry.Klass c) =>
+        new Page(
+            FileName: KlassLink(c),
+            Title: $"Class: {c.Name}",
+            Caption: null,
+            Body:
+            new PropsBuilder()
+                .Add("Name", c.Name)
+                .AddArray("Used in", c.Params.Select(x => x.OwnerCommand), LinkToCommand)
+                .BuildUl()
+
         );
 
     private static string GlxToHtml(GlxDef glx) => new PropsBuilder()
@@ -157,34 +163,35 @@ internal static class Writer
             .Add("Group", p.Group, LinkToGroupDef)
             .Add("Kind", p.Kind)
             .Add("Len", p.Len)
-            .Add("Class", p.Class)
+            .Add("Class", p.Klass, LinkToKlass)
             .Add("Type", p.Type, LinkToType)
             .Add("ApiEntry", p.ApiEntry)
-            .AddArray("Body", p.Body, Encode);
-    
-        private static Page FeaturePage(Registry.FeatureDef f) =>
-            new Page(
-                FileName: $"feature_{f.Name}",
-                Title: $"Feature: {f.Name}",
-                Body: new PropsBuilder()
-                    .Add("API", f.Api)
-                    .Add("Name", f.Name)
-                    .Add("Protect", f.Protect)
-                    .Add("Number", f.Number)
-                    .Add("Comment", f.Comment)
-                    .AddArray("Require", f.Require, x => InterfaceToHtml(x).BuildCommaSeparated())
-                    .AddArray("Remove", f.Remove, x => InterfaceToHtml(x).BuildCommaSeparated())
-                    .BuildUl()
-        );
+            .AddArray("Body", p.Body, EscapeToCode);
 
-        private static PropsBuilder InterfaceToHtml(InterfaceDef r) =>
-            new PropsBuilder()
-                .Add("Profile", r.Profile)
-                .Add("Api", r.Api)
-                .Add("Comment", r.Comment)
-                .AddArray("Enums", r.Enums, ResolveEnum)
-                .AddArray("Commands", r.Commands, ResolveCommands)
-                .AddArray("Types", r.Types, ResolveTypes);
+    private static Page FeaturePage(Registry.FeatureDef f) =>
+        new Page(
+            FileName: $"feature_{f.Name}",
+            Title: $"Feature: {f.Name}",
+            Caption: null,
+            Body: new PropsBuilder()
+                .Add("API", f.Api)
+                .Add("Name", f.Name)
+                .Add("Protect", f.Protect)
+                .Add("Number", f.Number)
+                .Add("Comment", f.Comment)
+                .AddArray("Require", f.Require, x => InterfaceToHtml(x).BuildCommaSeparated())
+                .AddArray("Remove", f.Remove, x => InterfaceToHtml(x).BuildCommaSeparated())
+                .BuildUl()
+    );
+
+    private static PropsBuilder InterfaceToHtml(InterfaceDef r) =>
+        new PropsBuilder()
+            .Add("Profile", r.Profile)
+            .Add("Api", r.Api)
+            .Add("Comment", r.Comment)
+            .AddArray("Enums", r.Enums, ResolveEnum)
+            .AddArray("Commands", r.Commands, ResolveCommands)
+            .AddArray("Types", r.Types, ResolveTypes);
 
     private static string ResolveTypes(InterfaceType arg) => new PropsBuilder()
         .Add("Comment", arg.Comment)
@@ -205,9 +212,10 @@ internal static class Writer
         new Page(
             FileName: $"extension_{ext.Name}",
             Title: $"Extension: {ext.Name}",
+            Caption: null,
             Body: new PropsBuilder()
                     .Add("Name", ext.Name)
-                    .AddArray("Supported", ext.Supported, Encode)
+                    .AddArray("Supported", ext.Supported, Escape)
                     .Add("Protect", ext.Protect)
                     .Add("Comment", ext.Comment)
                     .AddArray("Require", ext.Require, x => InterfaceToHtml(x).BuildCommaSeparated())
@@ -219,11 +227,12 @@ internal static class Writer
     {
         var links = string.Join(
             "",
-            pages.Select(p => $"<li><a href=\"{p.FileName}.html\">{Encode(p.Title)}</a></li>")
+            pages.Select(p => $"<li><a href=\"{p.FileName}.html\">{Escape(p.Title)}</a>{Escape(p.Caption == null ? "" : $" - {p.Caption}")} </li>")
         );
         return new Page(
             FileName: $"listing_{name}",
             Title: $"{name}",
+            Caption: null,
             Body: $"<ul>{links}</ul>"
         );
     }
@@ -232,7 +241,7 @@ internal static class Writer
     {
         var links = string.Join(
             " | ",
-            pages.Select(p => $"<a href=\"{p.FileName}.html\">{Encode(p.Title)}</a>")
+            pages.Select(p => $"<a href=\"{p.FileName}.html\">{Escape(p.Title)}</a>")
         );
         return $"<footer><nav>{links}</nav></footer>";
     }
@@ -246,6 +255,7 @@ internal static class Writer
         var commandPages = registry.CommandFromName.Values.Select(CommandPage).ToImmutableArray();
         var featurePages = registry.Features.Select(FeaturePage).ToImmutableArray();
         var extensionPages = registry.Extensions.Select(ExtensionPage).ToImmutableArray();
+        var klassPages = registry.KlassFromName.Values.Select(KlassPage).ToImmutableArray();
 
         var listingPages = new[]
         {
@@ -255,18 +265,20 @@ internal static class Writer
             CreateListingPage("Enums blocks", enumBlocks),
             CreateListingPage("Commands", commandPages),
             CreateListingPage("Features", featurePages),
-            CreateListingPage("Extensions", extensionPages)
+            CreateListingPage("Extensions", extensionPages),
+            CreateListingPage("Classes", klassPages)
         };
 
         var footer = CreateHtmlFooter(listingPages);
-        
+
         var indexPage = new Page(
             FileName: "index",
             Title: "Index",
+            Caption: null,
             Body: "Welcome!"
         );
 
-        return ( [
+        return ([
             ..typePages
                 .Concat(kindPages)
                 .Concat(groupPages)
@@ -275,6 +287,7 @@ internal static class Writer
                 .Concat(featurePages)
                 .Concat(extensionPages)
                 .Concat(listingPages)
+                .Concat(klassPages)
                 .Append(indexPage)
         ], footer);
     }
@@ -305,24 +318,25 @@ internal class PropsBuilder
     {
         if (value != null)
         {
-            _allProps.Add($"{Writer.Encode(value)}");
+            _allProps.Add($"{Writer.Escape(value)}");
         }
         return this;
     }
 
     internal PropsBuilder Add(string name, string? value)
     {
-        if(value != null) {
-            _allProps.Add($"{Writer.Encode(name)}: {Writer.Encode(value)}");
+        if (value != null)
+        {
+            _allProps.Add($"{Writer.Escape(name)}: {Writer.Escape(value)}");
         }
         return this;
     }
 
-    internal PropsBuilder Add<T>(string name, T? value, Func<T, string> converter) where T: class
+    internal PropsBuilder Add<T>(string name, T? value, Func<T, string> converter) where T : class
     {
         if (value != null)
         {
-            _allProps.Add($"{Writer.Encode(name)}: {converter(value)}");
+            _allProps.Add($"{Writer.Escape(name)}: {converter(value)}");
         }
         return this;
     }
@@ -330,10 +344,10 @@ internal class PropsBuilder
     internal PropsBuilder AddArray<T>(string name, IEnumerable<T> list, Func<T, string> resolve)
     {
         var r = list.Select(resolve).ToImmutableArray();
-        if(r.Length > 0)
+        if (r.Length > 0)
         {
             var value = string.Join("", r.Select(x => $"<li>{x}</li>"));
-            _allProps.Add($"{Writer.Encode(name)}: <ul>{value}</ul>");
+            _allProps.Add($"{Writer.Escape(name)}: <ul>{value}</ul>");
         }
         return this;
     }

@@ -6,7 +6,9 @@ namespace Glox.Registry;
 
 // Data model for the Khronos OpenGL API Registry Schema
 
-internal enum Level { ResolveGroupRefs,
+internal enum Level
+{
+    ResolveGroupAndKlassRefs,
     ResolveInterface
 }
 
@@ -42,6 +44,7 @@ internal sealed class Registry(
                 g => g.Key,
                 g => g.ToImmutableArray()
             );
+    internal Dictionary<string, Klass> KlassFromName { get; } = new();
 
     internal void Resolve(Level level)
     {
@@ -52,6 +55,7 @@ internal sealed class Registry(
         foreach (var c in CommandFromName.Values) c.Resolve(this, level);
         foreach (var f in Features) f.Resolve(this, level);
         foreach (var e in Extensions) e.Resolve(this, level);
+        foreach (var c in KlassFromName.Values) c.Resolve(this, level);
         // Comments are strings, nothing to resolve
     }
 
@@ -64,11 +68,31 @@ internal sealed class Registry(
         return def;
     }
 
+    internal Klass GetKlass(string name)
+    {
+        if (KlassFromName.TryGetValue(name, out var def)) return def;
+
+        def = new Klass(name);
+        KlassFromName.Add(name, def);
+        return def;
+    }
+
     internal ImmutableArray<EnumValue> FindEnumValue(string name) => CollectionExtensions.GetValueOrDefault(EnumValuesFromName, name);
 
     internal CommandDef? FindCommand(string name) => CollectionExtensions.GetValueOrDefault(CommandFromName, name);
 
     internal TypeDef? FindType(string name) => CollectionExtensions.GetValueOrDefault(Types, name);
+}
+
+internal sealed class Klass(string name)
+{
+    internal string Name { get; } = name;
+    public List<ParamDef> Params { get; } = new();
+
+    public void Resolve(Registry registry, Level level)
+    {
+        // todo(Gustav): implement types
+    }
 }
 
 internal sealed class TypeDef
@@ -123,7 +147,7 @@ internal sealed class GroupDef(string name, ImmutableArray<string> enumsRefs)
 }
 
 internal sealed class EnumBlock(
-    int index, string? ns, EnumKind type, string? vendor, string? comment, string? start, string? end, string? group, ImmutableArray<EnumValue> enums, ImmutableArray<UnusedDef> unused)
+    int index, string? ns, EnumKind type, string? vendor, string? comment, string? start, string? end, string? groupRef, ImmutableArray<EnumValue> enums, ImmutableArray<UnusedDef> unused)
 {
     internal int Index { get; } = index;
     internal string? Namespace { get; } = ns;
@@ -132,7 +156,8 @@ internal sealed class EnumBlock(
     internal string? Comment { get; } = comment;
     internal string? Start { get; } = start;
     internal string? End { get; } = end;
-    internal string? Group { get; } = group;
+    internal string? GroupRef { get; } = groupRef;
+    internal GroupDef? Group { get; private set; } = null;
     internal ImmutableArray<EnumValue> Enums { get; } = enums;
     internal ImmutableArray<UnusedDef> Unused { get; } = unused;
 
@@ -140,6 +165,14 @@ internal sealed class EnumBlock(
     {
         foreach (var e in Enums) e.Resolve(registry, level);
         foreach (var u in Unused) u.Resolve(registry, level);
+
+        if (level == Level.ResolveGroupAndKlassRefs)
+        {
+            if (GroupRef != null)
+            {
+                Group = registry.GetGroup(GroupRef);
+            }
+        }
     }
 }
 
@@ -157,7 +190,7 @@ internal sealed class EnumValue(
 
     internal void Resolve(Registry registry, Level level)
     {
-        if(level == Level.ResolveGroupRefs)
+        if(level == Level.ResolveGroupAndKlassRefs)
         {
             Groups = GroupRefs.Select(registry.GetGroup).ToImmutableArray();
             foreach (var g in Groups)
@@ -185,7 +218,7 @@ internal sealed class CommandDef(
     ProtoDef proto, ImmutableArray<ParamDef> @params, string? alias, string? vecequiv, GlxDef? glx, string? comment, string? ns)
 {
     internal ProtoDef Proto { get; } = proto;
-    internal ImmutableArray<ParamDef> Params { get; } = @params;
+    internal ImmutableArray<ParamDef> Params { get; set; } = @params;
     internal string? Alias { get; } = alias;
     internal string? VecEquiv { get; } = vecequiv;
     internal GlxDef? Glx { get; } = glx;
@@ -206,13 +239,14 @@ internal sealed class CommandDef(
 }
 
 internal sealed class ProtoDef(
-    string? group, string? kind, string? ptype, string? apiEntry, string? @class, string name, ImmutableArray<string> body)
+    string? group, string? kind, string? ptype, string? apiEntry, string? classRef, string name, ImmutableArray<string> body)
 {
     internal string? Group { get; } = group;
     internal string? Kind { get; } = kind;
     internal string? Ptype { get; } = ptype;
     internal string? ApiEntry { get; } = apiEntry;
-    internal string? Class { get; } = @class;
+    internal string? ClassRef { get; } = classRef;
+    internal Klass? Klass { get; private set; } = null;
     internal string Name { get; } = name;
     internal ImmutableArray<string> Body { get; } = body;
 
@@ -222,8 +256,7 @@ internal sealed class ProtoDef(
     }
 }
 
-internal sealed class ParamDef(
-    Location location, string? groupRef, string? kind, string? len, string? @class, string? ptypeRef, string? apiEntry, string name, ImmutableArray<string> body)
+internal sealed class ParamDef(Location location, CommandDef command, string? groupRef, string? kind, string? len, string? klassRef, string? typeRef, string? apiEntry, string name, ImmutableArray<string> body)
 {
     private readonly Location _location = location;
 
@@ -231,34 +264,42 @@ internal sealed class ParamDef(
     internal GroupDef? Group { get; private set; } = null;
     internal string? Kind { get; } = kind;
     internal string? Len { get; } = len;
-    internal string? Class { get; } = @class;
-    internal string? PtypeRef { get; } = ptypeRef;
+    internal string? KlassRef { get; } = klassRef;
+    internal Klass? Klass { get; private set; } = null;
+    internal string? TypeRef { get; } = typeRef;
     internal TypeDef Type { get; private set; } = TypeDef.Null();
     internal string? ApiEntry { get; } = apiEntry;
     internal string Name { get; } = name;
     internal ImmutableArray<string> Body { get; } = body;
 
+    internal CommandDef OwnerCommand { get; } = command;
+
     internal void Resolve(Registry registry, Level level)
     {
-        if(level == Level.ResolveGroupRefs)
-        {
-            if (GroupRef != null)
-            {
-                Group = registry.GetGroup(GroupRef);
-            }
+        if (level != Level.ResolveGroupAndKlassRefs) return;
 
-            if (PtypeRef != null)
+        if (GroupRef != null)
+        {
+            Group = registry.GetGroup(GroupRef);
+        }
+
+        if (TypeRef != null)
+        {
+            var found = registry.FindType(TypeRef);
+            if (found != null)
             {
-                var found = registry.FindType(PtypeRef);
-                if (found != null)
-                {
-                    Type = found;
-                }
-                else
-                {
-                    _location.ReportError($"missing reference {PtypeRef}");
-                }
+                Type = found;
             }
+            else
+            {
+                _location.ReportError($"missing reference {TypeRef}");
+            }
+        }
+
+        if (KlassRef != null)
+        {
+            Klass = registry.GetKlass(KlassRef);
+            Klass.Params.Add(this);
         }
     }
 }
@@ -489,7 +530,7 @@ internal static class Parser
             comment: comment,
             start: start,
             end: end,
-            group: group,
+            groupRef: group,
             enums: enums,
             unused: unused
         );
@@ -539,20 +580,24 @@ internal static class Parser
     private static CommandDef ParseCommandDef(El el, string? commandsNamespace)
     {
         var proto = el.ElementsNamed("proto").Select(ParseProtoDef).First();
-        var @params = el.ElementsNamed("param").Select(ParseParamDef).ToImmutableArray();
         var alias = el.ElementsNamed("alias").Select(a => a.ReadAttribute("name")).FirstOrDefault();
         var vecequiv = el.ElementsNamed("vecequiv").Select(a => a.ReadAttribute("name")).FirstOrDefault();
         var glx = el.ElementsNamed("glx").Select(ParseGlxDef).FirstOrDefault();
         var comment = el.ReadAttribute("comment");
-        return new CommandDef(
+        var command = new CommandDef(
             proto: proto,
-            @params: @params,
+            @params: [],
             alias: alias,
             vecequiv: vecequiv,
             glx: glx,
             comment: comment,
             ns: commandsNamespace
         );
+
+        var @params = el.ElementsNamed("param").Select(e => ParseParamDef(e, command)).ToImmutableArray();
+        command.Params = @params;
+
+        return command;
     }
 
     private static ProtoDef ParseProtoDef(El el)
@@ -569,13 +614,13 @@ internal static class Parser
             kind: kind,
             ptype: ptype,
             apiEntry: apientry,
-            @class: @class,
+            classRef: @class,
             name: name,
             body: body
         );
     }
 
-    private static ParamDef ParseParamDef(El el)
+    private static ParamDef ParseParamDef(El el, CommandDef command)
     {
         var group = el.ReadAttribute("group");
         var kind = el.ReadAttribute("kind");
@@ -585,12 +630,12 @@ internal static class Parser
         var ptype = el.ElementsNamed("ptype").Select(p => p.ReadInnerText().FirstOrDefault()).FirstOrDefault();
         var name = el.ElementsNamed("name").Select(n => n.ReadInnerText().FirstOrDefault()).FirstOrDefault() ?? "";
         var body = el.ReadInnerText();
-        return new ParamDef(el.Location,
+        return new ParamDef(el.Location, command,
             groupRef: group,
             kind: kind,
             len: len,
-            @class: @class,
-            ptypeRef: ptype,
+            klassRef: @class,
+            typeRef: ptype,
             apiEntry: apientry,
             name: name,
             body: body
@@ -716,7 +761,7 @@ internal static class Parser
         );
 
         AnsiConsole.WriteLine("Resolving references...");
-        reg.Resolve(Level.ResolveGroupRefs);
+        reg.Resolve(Level.ResolveGroupAndKlassRefs);
         reg.Resolve(Level.ResolveInterface);
 
         return reg;
