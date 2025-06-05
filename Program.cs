@@ -63,6 +63,7 @@ internal class El : IDisposable
 {
     public El(Location location, XmlElement element)
     {
+        _self = element;
         _location = location;
         _elements = [..element.Cast<XmlNode>().Where(x => x is XmlElement).Cast<XmlElement>()];
         _unusedElements = _elements.Select(x => x.Name).ToHashSet();
@@ -79,6 +80,7 @@ internal class El : IDisposable
     private ImmutableArray<string> _innerText;
     private readonly Dictionary<string, string> _attributes;
     private readonly Location _location;
+    private readonly XmlElement _self;
 
     public Location Location => _location;
 
@@ -125,6 +127,13 @@ internal class El : IDisposable
 
     public string? ReadAttribute(string name)
         => _attributes.Remove(name, out var ret) ? ret : null;
+
+    public IEnumerable<XmlNode> ReadChildren()
+    {
+        _unusedElements.Clear();
+        _innerText = [];
+        return _self.ChildNodes.Cast<XmlNode>();
+    }
 }
 
 internal class Errors

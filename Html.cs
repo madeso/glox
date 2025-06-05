@@ -15,7 +15,9 @@ internal record Page(string FileName, string Title, string? Caption, string Body
 internal static class Writer
 {
     internal static string Escape(string s) => System.Net.WebUtility.HtmlEncode(s);
-    internal static string EscapeToCode(string s) => $"<pre><code>{Escape(s)}</code></pre>";
+    internal static string InCode(string s) => $"<pre><code>{s}</code></pre>";
+    internal static string MakeBold(string s) => $"<b>{s}</b>";
+    internal static string EscapeToCode(string s) => InCode(Escape(s));
     internal static string MakeLink(string link, string name) => $"<a href=\"{link}.html\">{Escape(name)}</a>";
 
     private static void WritePage(DirectoryInfo folder, Page page, string footer)
@@ -141,11 +143,11 @@ internal static class Writer
                     .Add("Comment", c.Comment)
                     .Add("Prop Group", c.Proto.Group)
                     .Add("Prop Kind", c.Proto.Kind)
-                    .Add("Prop Ptype", c.Proto.Ptype)
-                    .Add("Prop ApiEntry", c.Proto.ApiEntry)
+                    //.Add("Prop Ptype", c.Proto.Ptype)
+                    //.Add("Prop ApiEntry", c.Proto.ApiEntry)
                     .Add("Prop Class", c.Proto.Klass, LinkToKlass)
                     .Add("Prop Name", c.Proto.Name)
-                    .AddArray("Prop Body", c.Proto.Body, EscapeToCode)
+                    .AddStruct("Prop Body", c.Proto.Body, b => InCode(b.Visit(new HtmlCodeGenerator()).Code))
                     .AddArray("Params", c.Params, x => PropsForParam(x).BuildCommaSeparated())
                     .Add("Glx", c.Glx, x => PropsForGlx(x).BuildCommaSeparated())
                     .AddArray("Mentioned in features", FindRoots(reg.Features, otherCommand => otherCommand.Proto.Name == c.Proto.Name, f => f.AllCommands)
@@ -154,6 +156,33 @@ internal static class Writer
                         , f => $"{LinkToExtension(f.What)} ({f.Action})")
                     .BuildList()
         );
+
+    private sealed class HtmlCodeGenerator : IProtoMemberVisitor
+    {
+        public string Code { get; private set; } = "";
+
+        public void VisitText(ProtoTextMember member)
+        {
+            Code += Escape(member.Value);
+        }
+
+        public void VisitName(ProtoNameMember name)
+        {
+            Code += MakeBold(Escape(name.Name));
+        }
+
+        public void VisitPType(ProtoPTypeMember member)
+        {
+            if(member.Type != null)
+            {
+                Code += LinkToType(member.Type);
+            }
+            else
+            {
+                Code += Escape("<invalid ptype>");
+            }
+        }
+    }
 
 
     private static string FileForKlass(Klass c) => $"class_{c.Name}";

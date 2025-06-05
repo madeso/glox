@@ -1,4 +1,7 @@
 ﻿using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks.Dataflow;
+using System.Xml;
 using System.Xml.Linq;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -29,9 +32,9 @@ internal sealed class Registry(
     ImmutableArray<ExtensionDef> extensions,
     ImmutableArray<string> comments)
 {
-    internal ImmutableDictionary<string, TypeDef> Types { get; } = types.ToImmutableDictionary(x => x.Name, x=>x);
+    internal ImmutableDictionary<string, TypeDef> Types { get; } = types.ToImmutableDictionary(x => x.Name, x => x);
     internal ImmutableArray<KindDef> Kinds { get; } = kinds;
-    internal Dictionary<string, GroupDef> GroupFromName { get; } = groups.ToDictionary(x => x.Name, x=>x);
+    internal Dictionary<string, GroupDef> GroupFromName { get; } = groups.ToDictionary(x => x.Name, x => x);
     internal ImmutableArray<EnumBlock> EnumBlocks { get; } = enumBlocks;
     internal ImmutableDictionary<string, CommandDef> CommandFromName { get; } = commands.ToImmutableDictionary(x => x.Proto.Name, x => x);
     internal ImmutableArray<FeatureDef> Features { get; } = features;
@@ -191,7 +194,7 @@ internal sealed class EnumValue(
 
     internal void Resolve(Registry registry, Level level)
     {
-        if(level == Level.ResolveGroupAndKlassRefs)
+        if (level == Level.ResolveGroupAndKlassRefs)
         {
             Groups = GroupRefs.Select(registry.GetGroup).ToImmutableArray();
             foreach (var g in Groups)
@@ -235,25 +238,113 @@ internal sealed class CommandDef(
 
     internal static CommandDef Null()
     {
-        return new CommandDef(new ProtoDef(null, null, null, null, null, "<null>", []), [], null, null, null, null, null);
+        return new CommandDef(new ProtoDef(null, null, null, "<missing>", []), [], null, null, null, null, null);
     }
 }
 
-internal sealed class ProtoDef(
-    string? group, string? kind, string? ptype, string? apiEntry, string? classRef, string name, ImmutableArray<string> body)
+interface IProtoMember
 {
-    internal string? Group { get; } = group;
-    internal string? Kind { get; } = kind;
-    internal string? Ptype { get; } = ptype;
-    internal string? ApiEntry { get; } = apiEntry;
-    internal string? ClassRef { get; } = classRef;
-    internal Klass? Klass { get; private set; } = null;
+    void Resolve(Registry registry, Level level);
+    void Visit(IProtoMemberVisitor vis);
+}
+
+internal static class IProtoMemberUtils
+{
+    public static T Visit<T>(this IEnumerable<IProtoMember> member, T visitor) where T: IProtoMemberVisitor
+    {
+        foreach (var m in member)
+        {
+            m.Visit(visitor);
+        }
+        return visitor;
+    }
+}
+
+interface IProtoMemberVisitor
+{
+    void VisitText(ProtoTextMember member);
+    void VisitName(ProtoNameMember member);
+    void VisitPType(ProtoPTypeMember member);
+}
+
+internal sealed class ProtoTextMember(string value) : IProtoMember
+{
+    public string Value { get; } = value;
+    public static ProtoTextMember? Parse(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        return new ProtoTextMember(s);
+    }
+    public void Resolve(Registry registry, Level level)
+    {
+        // Nothing to resolve
+    }
+    public void Visit(IProtoMemberVisitor vis)
+    {
+        vis.VisitText(this);
+    }
+}
+
+internal sealed class ProtoNameMember(string name) : IProtoMember
+{
+    public string Name { get; } = name;
+    public void Resolve(Registry registry, Level level)
+    {
+        // Nothing to resolve
+    }
+    public void Visit(IProtoMemberVisitor vis)
+    {
+        vis.VisitName(this);
+    }
+}
+
+internal sealed class ProtoPTypeMember(Location location, string @ref) : IProtoMember
+{
+    public TypeDef? Type { get; private set; } = null;
+
+    public void Resolve(Registry registry, Level level)
+    {
+        if (level != Level.ResolveGroupAndKlassRefs) return;
+
+        var found = registry.FindType(@ref);
+        if (found == null)
+        {
+            location.ReportError($"Missing ptype {@ref}");
+            return;
+        }
+
+        Type = found;
+    }
+
+    public void Visit(IProtoMemberVisitor vis)
+    {
+        vis.VisitPType(this);
+    }
+}
+
+internal sealed class ProtoDef(string? group, string? klassRef, string? kind, string name, ImmutableArray<IProtoMember> body)
+{
     internal string Name { get; } = name;
-    internal ImmutableArray<string> Body { get; } = body;
+    internal string? Group { get; } = group;
+
+    public Klass? Klass { get; private set; } = null;
+    public string? Kind { get; } = kind;
+
+    internal ImmutableArray<IProtoMember> Body { get; } = body;
 
     internal void Resolve(Registry registry, Level level)
     {
-        // Nothing to resolve
+        foreach(var p in Body)
+        {
+            p.Resolve(registry, level);
+        }
+
+        if (level != Level.ResolveGroupAndKlassRefs) return;
+
+        if(klassRef != null)
+        {
+            Klass = registry.GetKlass(klassRef);
+        }
     }
 }
 
@@ -353,7 +444,7 @@ internal sealed class FeatureDef(
 
     internal IEnumerable<ActionWith<CommandDef>> AllCommands =>
         Remove.SelectMany(r => r.Commands).Select(x => x.Command).Select(x => Action.Removed.With(x)).Concat(
-            Require.SelectMany(r => r.Commands).Select(x=>x.Command).Select(x => Action.Required.With(x)));
+            Require.SelectMany(r => r.Commands).Select(x => x.Command).Select(x => Action.Required.With(x)));
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -457,7 +548,7 @@ internal sealed class InterfaceCommand(Location location, string commandRef, str
         if (level == Level.ResolveInterface)
         {
             var found = registry.FindCommand(CommandRef);
-            if(found != null)
+            if (found != null)
             {
                 Command = found;
             }
@@ -653,24 +744,123 @@ internal static class Parser
         return command;
     }
 
+    private class NameVisitor : IProtoMemberVisitor
+    {
+        public List<string> Names { get; } = [];
+
+        public void VisitText(ProtoTextMember member)
+        {
+        }
+
+        public void VisitName(ProtoNameMember member)
+        {
+            Names.Add(member.Name);
+        }
+
+        public void VisitPType(ProtoPTypeMember member)
+        {
+        }
+    }
+
     private static ProtoDef ParseProtoDef(El el)
     {
         var group = el.ReadAttribute("group");
+        var klassRef = el.ReadAttribute("class");
         var kind = el.ReadAttribute("kind");
-        var @class = el.ReadAttribute("class"); // Added class attribute
-        var apientry = el.ElementsNamed("apientry").Select(a => a.ReadInnerText().FirstOrDefault()).FirstOrDefault();
-        var ptype = el.ElementsNamed("ptype").Select(p => p.ReadInnerText().FirstOrDefault()).FirstOrDefault();
-        var name = el.ElementsNamed("name").Select(n => n.ReadInnerText().FirstOrDefault()).FirstOrDefault() ?? "";
-        var body = el.ReadInnerText();
+
+        var children = el.ReadChildren().ToImmutableArray();
+        var body = InsertSpace(ParseProtoChildren(el.Location, children)).ToImmutableArray();
+        var name = body.Visit(new NameVisitor()).Names.FirstOrDefault();
+
+        if (name == null)
+        {
+            el.Location.ReportError("Missing (or too many) names");
+            name = "<missing>";
+        }
+        
         return new ProtoDef(
             group: group,
+            klassRef: klassRef,
             kind: kind,
-            ptype: ptype,
-            apiEntry: apientry,
-            classRef: @class,
-            name: name,
-            body: body
+            body: body,
+            name: name
         );
+    }
+
+    private static IEnumerable<IProtoMember> InsertSpace(IEnumerable<IProtoMember> mems)
+    {
+        IProtoMember? last = null;
+        foreach (var current in mems)
+        {
+            if (last != null)
+            {
+                if (IsBlock(last) && IsBlock(current))
+                {
+                    yield return new ProtoTextMember(" ");
+                }
+            }
+
+            last = current;
+            yield return current;
+        }
+
+        static bool IsBlock(IProtoMember m) => m is ProtoPTypeMember or ProtoNameMember;
+    }
+
+    private static IEnumerable<IProtoMember> ParseProtoChildren(Location root, IEnumerable<XmlNode> nodes)
+    {
+        int index = 0;
+        foreach (var n in nodes)
+        {
+            switch (n)
+            {
+                case XmlComment:
+                    continue;
+                case XmlElement xmlElement:
+                    {
+                        var r = ParseProtoElement(xmlElement, root.Sub(xmlElement.Name, index));
+                        if (r != null) yield return r;
+                    }
+                    break;
+                case XmlSignificantWhitespace sw:
+                    {
+                        var r = ProtoTextMember.Parse(sw.Value);
+                        if (r != null) yield return r;
+                    }
+                    break;
+                case XmlText t:
+                    {
+                        var r = ProtoTextMember.Parse(t.Value);
+                        if (r != null) yield return r;
+                    }
+                    break;
+                case XmlWhitespace ws:
+                    {
+                        var r = ProtoTextMember.Parse(ws.Value);
+                        if (r != null) yield return r;
+                    }
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(n));
+            }
+
+            index += 1;
+        }
+    }
+
+    private static IProtoMember? ParseProtoElement(XmlElement elem, Location loc)
+    {
+        switch (elem.Name)
+        {
+            case "name":
+                // <name> tag: function/type/param name
+                return new ProtoNameMember(elem.InnerText);
+            case "ptype":
+                // <ptype> tag: type name
+                return new ProtoPTypeMember(loc, elem.InnerText);
+            default:
+                return null;
+        }
     }
 
     private static ParamDef ParseParamDef(El el, CommandDef command)
