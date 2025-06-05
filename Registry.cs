@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using System.Xml.Linq;
 using Spectre.Console;
+using Spectre.Console.Cli;
 
 namespace Glox.Registry;
 
@@ -320,6 +321,25 @@ internal enum NamedApi
     GL, GlEmbedded1, GlEmbedded2, GlSafety1, GlSafety2
 }
 
+internal enum Action
+{
+    Required, Removed
+}
+
+internal class ActionWith<T>(Action action, T what)
+{
+    public Action Action { get; } = action;
+    public T What { get; } = what;
+}
+
+internal static class ActionExtensions
+{
+    internal static ActionWith<T> With<T>(this Action a, T what)
+    {
+        return new ActionWith<T>(a, what);
+    }
+}
+
 internal sealed class FeatureDef(
     NamedApi? api, string name, string? protect, string number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
@@ -330,6 +350,10 @@ internal sealed class FeatureDef(
     internal string? Comment { get; } = comment;
     internal ImmutableArray<InterfaceDef> Require { get; } = require;
     internal ImmutableArray<InterfaceDef> Remove { get; } = remove;
+
+    internal IEnumerable<ActionWith<CommandDef>> AllCommands =>
+        Remove.SelectMany(r => r.Commands).Select(x => x.Command).Select(x => Action.Removed.With(x)).Concat(
+            Require.SelectMany(r => r.Commands).Select(x=>x.Command).Select(x => Action.Required.With(x)));
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -348,6 +372,10 @@ internal sealed class ExtensionDef(
     internal string? Comment { get; } = comment;
     internal ImmutableArray<InterfaceDef> Require { get; } = require;
     internal ImmutableArray<InterfaceDef> Remove { get; } = remove;
+
+    internal IEnumerable<ActionWith<CommandDef>> AllCommands =>
+        Remove.SelectMany(r => r.Commands).Select(x => x.Command).Select(x => Action.Removed.With(x)).Concat(
+            Require.SelectMany(r => r.Commands).Select(x => x.Command).Select(x => Action.Required.With(x)));
 
     internal void Resolve(Registry registry, Level level)
     {

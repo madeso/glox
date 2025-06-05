@@ -6,6 +6,7 @@ using Spectre.Console;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
+using Action = Glox.Registry.Action;
 
 namespace Glox.Html;
 
@@ -117,9 +118,16 @@ internal static class Writer
         _ => throw new ArgumentOutOfRangeException(nameof(api), api, null)
     };
 
+    private static IEnumerable<ActionWith<TRoot>>FindRoots<TRoot, TChild>(IEnumerable<TRoot> roots, Func<TChild, bool> predicate, Func<TRoot, IEnumerable<ActionWith<TChild>>> allCommands)
+    {
+        var list = roots.SelectMany(root => allCommands(root).Select(x => new { Root = root, Action = x.Action, Command = x.What}));
+        var partial = list.Where(x => predicate(x.Command));
+        return partial.Select(x => x.Action.With(x.Root));
+    }
+
     private static string FileForCommand(CommandDef c) => $"command_{c.Proto.Name}";
     private static string LinkToCommand(CommandDef c) => MakeLink(FileForCommand(c), c.Proto.Name);
-    private static Page CommandPage(Registry.CommandDef c) =>
+    private static Page CommandPage(Registry.CommandDef c, Registry.Registry reg) =>
         new Page(
             FileName: FileForCommand(c),
             Title: $"Command: {c.Proto.Name}",
@@ -140,8 +148,11 @@ internal static class Writer
                     .AddArray("Prop Body", c.Proto.Body, EscapeToCode)
                     .AddArray("Params", c.Params, x => PropsForParam(x).BuildCommaSeparated())
                     .Add("Glx", c.Glx, x => PropsForGlx(x).BuildCommaSeparated())
+                    .AddArray("Mentioned in features", FindRoots(reg.Features, otherCommand => otherCommand.Proto.Name == c.Proto.Name, f => f.AllCommands)
+                        , f => $"{LinkToFeature(f.What)} ({f.Action})")
+                    .AddArray("Mentioned in extension", FindRoots(reg.Extensions, otherCommand => otherCommand.Proto.Name == c.Proto.Name, f => f.AllCommands)
+                        , f => $"{LinkToExtension(f.What)} ({f.Action})")
                     .BuildList()
-
         );
 
 
@@ -175,9 +186,11 @@ internal static class Writer
             .Add("ApiEntry", p.ApiEntry)
             .AddArray("Body", p.Body, EscapeToCode);
 
+    private static string FileForFeature(FeatureDef f) => $"feature_{f.Name}";
+    private static string LinkToFeature(FeatureDef f) => MakeLink(FileForFeature(f), f.Name);
     private static Page FeaturePage(FeatureDef f) =>
         new Page(
-            FileName: $"feature_{f.Name}",
+            FileName: FileForFeature(f),
             Title: $"Feature: {f.Name}",
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
@@ -212,9 +225,11 @@ internal static class Writer
         .Add("Comment", arg.Comment)
         .AddSeveral(arg.Value, x => PropsFromEnumValue(x).BuildCommaSeparated());
 
+    private static string FileForExtension(ExtensionDef ext) => $"extension_{ext.Name}";
+    private static string LinkToExtension(ExtensionDef f) => MakeLink(FileForExtension(f), f.Name);
     private static Page ExtensionPage(Registry.ExtensionDef ext) =>
         new Page(
-            FileName: $"extension_{ext.Name}",
+            FileName: FileForExtension(ext),
             Title: $"Extension: {ext.Name}",
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
@@ -256,7 +271,7 @@ internal static class Writer
         var kindPages = registry.Kinds.Select(KindPage).ToImmutableArray();
         var groupPages = registry.GroupFromName.Values.Select(GroupPage).ToImmutableArray();
         var enumBlocks = registry.EnumBlocks.Select(EnumBlocksPage).ToImmutableArray();
-        var commandPages = registry.CommandFromName.Values.Select(CommandPage).ToImmutableArray();
+        var commandPages = registry.CommandFromName.Values.Select(c => CommandPage(c, registry)).ToImmutableArray();
         var featurePages = registry.Features.Select(FeaturePage).ToImmutableArray();
         var extensionPages = registry.Extensions.Select(ExtensionPage).ToImmutableArray();
         var klassPages = registry.KlassFromName.Values.Select(KlassPage).ToImmutableArray();
