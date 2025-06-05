@@ -341,12 +341,12 @@ internal static class ActionExtensions
 }
 
 internal sealed class FeatureDef(
-    NamedApi? api, string name, string? protect, string number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
+    NamedApi? api, string name, string? protect, Version number, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
     internal NamedApi? Api { get; } = api;
     internal string Name { get; } = name;
     internal string? Protect { get; } = protect;
-    internal string Number { get; } = number;
+    internal Version Number { get; } = number;
     internal string? Comment { get; } = comment;
     internal ImmutableArray<InterfaceDef> Require { get; } = require;
     internal ImmutableArray<InterfaceDef> Remove { get; } = remove;
@@ -710,7 +710,13 @@ internal static class Parser
         var api = ParseApi(el.Location, el.ReadAttribute("api"));
         var name = el.ReadAttribute("name") ?? "";
         var protect = el.ReadAttribute("protect");
-        var number = el.ReadAttribute("number") ?? "";
+        var version = el.ReadAttribute("number");
+        if (version == null)
+        {
+            el.Location.ReportError("Missing version information");
+            version = "1337.42";
+        }
+        var number = Version.Parse(version);
         var comment = el.ReadAttribute("comment");
         var require = el.ElementsNamed("require").Select(ParseRequireRemoveDef).ToImmutableArray();
         var remove = el.ElementsNamed("remove").Select(ParseRequireRemoveDef).ToImmutableArray();

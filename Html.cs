@@ -197,7 +197,7 @@ internal static class Writer
                 .AddStruct("API", f.Api, HtmlFromApi)
                 .Add("Name", f.Name)
                 .Add("Protect", f.Protect)
-                .Add("Number", f.Number)
+                .Add("Number", f.Number, v => v.ToString())
                 .Add("Comment", f.Comment)
                 .AddArray("Require", f.Require, x => PropsForInterface(x).BuildCommaSeparated())
                 .AddArray("Remove", f.Remove, x => PropsForInterface(x).BuildCommaSeparated())
