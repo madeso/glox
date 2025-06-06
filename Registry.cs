@@ -238,7 +238,7 @@ internal sealed class CommandDef(
 
     internal static CommandDef Null()
     {
-        return new CommandDef(new ProtoDef(null, null, null, "<missing>", []), [], null, null, null, null, null);
+        return new CommandDef(new ProtoDef(null, null, "<missing>", []), [], null, null, null, null, null);
     }
 }
 
@@ -301,6 +301,9 @@ internal sealed class ProtoNameMember(string name) : IProtoMember
 internal sealed class ProtoPTypeMember(Location location, string @ref) : IProtoMember
 {
     public TypeDef? Type { get; private set; } = null;
+    public string? Kind { get; set; } = null;
+    public string? KlassRef { get; set; } = null;
+    public Klass? Klass { get; private set; } = null;
 
     public void Resolve(Registry registry, Level level)
     {
@@ -314,6 +317,11 @@ internal sealed class ProtoPTypeMember(Location location, string @ref) : IProtoM
         }
 
         Type = found;
+
+        if (KlassRef != null)
+        {
+            Klass = registry.GetKlass(KlassRef);
+        }
     }
 
     public void Visit(IProtoMemberVisitor vis)
@@ -322,13 +330,12 @@ internal sealed class ProtoPTypeMember(Location location, string @ref) : IProtoM
     }
 }
 
-internal sealed class ProtoDef(string? group, string? klassRef, string? kind, string name, ImmutableArray<IProtoMember> body)
+internal sealed class ProtoDef(string? group, ProtoPTypeMember? ptype, string name, ImmutableArray<IProtoMember> body)
 {
     internal string Name { get; } = name;
     internal string? Group { get; } = group;
 
-    public Klass? Klass { get; private set; } = null;
-    public string? Kind { get; } = kind;
+    internal ProtoPTypeMember? Ptype { get; } = ptype;
 
     internal ImmutableArray<IProtoMember> Body { get; } = body;
 
@@ -337,13 +344,6 @@ internal sealed class ProtoDef(string? group, string? klassRef, string? kind, st
         foreach(var p in Body)
         {
             p.Resolve(registry, level);
-        }
-
-        if (level != Level.ResolveGroupAndKlassRefs) return;
-
-        if(klassRef != null)
-        {
-            Klass = registry.GetKlass(klassRef);
         }
     }
 }
@@ -762,6 +762,24 @@ internal static class Parser
         }
     }
 
+    private class PtypeVistor : IProtoMemberVisitor
+    {
+        public List<ProtoPTypeMember> Ptypes { get; } = [];
+
+        public void VisitText(ProtoTextMember member)
+        {
+        }
+
+        public void VisitName(ProtoNameMember member)
+        {
+        }
+
+        public void VisitPType(ProtoPTypeMember member)
+        {
+            Ptypes.Add(member);
+        }
+    }
+
     private static ProtoDef ParseProtoDef(El el)
     {
         var group = el.ReadAttribute("group");
@@ -771,17 +789,36 @@ internal static class Parser
         var children = el.ReadChildren().ToImmutableArray();
         var body = InsertSpace(ParseProtoChildren(el.Location, children)).ToImmutableArray();
         var name = body.Visit(new NameVisitor()).Names.FirstOrDefault();
+        var ptypes = body.Visit(new PtypeVistor()).Ptypes;
 
         if (name == null)
         {
             el.Location.ReportError("Missing (or too many) names");
             name = "<missing>";
         }
-        
+
+        if (ptypes.Count > 1)
+        {
+            el.Location.ReportError("Too many ptypes");
+        }
+
+        var ptype = ptypes.FirstOrDefault();
+        if (klassRef != null || kind != null)
+        {
+            if (ptype == null)
+            {
+                el.Location.ReportError("Has kind or class but no ptype");
+            }
+            else
+            {
+                ptype.Kind = kind;
+                ptype.KlassRef = klassRef;
+            }
+        }
+
         return new ProtoDef(
             group: group,
-            klassRef: klassRef,
-            kind: kind,
+            ptype: ptype,
             body: body,
             name: name
         );
