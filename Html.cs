@@ -53,9 +53,11 @@ internal static class Writer
                 .BuildList()
         );
 
+    private static string FileForKind(KindDef k) => $"kind_{k.Name}";
+    private static string LinkToKind(KindDef g) => MakeLink(FileForKind(g), g.Name);
     private static Page KindPage(Registry.KindDef k) =>
         new Page(
-            FileName: $"kind_{k.Name}",
+            FileName: FileForKind(k),
             Title: $"Kind: {k.Name}",
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
@@ -141,12 +143,9 @@ internal static class Writer
                     .Add("VecEquiv", c.VecEquiv)
                     .Add("Namespace", c.Namespace)
                     .Add("Comment", c.Comment)
-                    .Add("Prop Group", c.Proto.Group)
-                    .Add("Prop Kind", c.Proto.Ptype?.Kind)
-                    //.Add("Prop Ptype", c.Proto.Ptype)
-                    //.Add("Prop ApiEntry", c.Proto.ApiEntry)
-                    .Add("Prop Class", c.Proto.Ptype?.Klass, LinkToKlass)
-                    .Add("Prop Name", c.Proto.Name)
+                    .Add("Return Group", c.Proto.Ptype?.Group, LinkToGroup)
+                    .Add("Return Kind", c.Proto.Ptype?.Kind, LinkToKind)
+                    .Add("Return Class", c.Proto.Ptype?.Klass, LinkToKlass)
                     .AddStruct("Prop Body", c.Proto.Body, b => InCode(b.Visit(new HtmlCodeGenerator()).Code))
                     .AddArray("Params", c.Params, x => PropsForParam(x).BuildCommaSeparated())
                     .Add("Glx", c.Glx, x => PropsForGlx(x).BuildCommaSeparated())
@@ -296,8 +295,8 @@ internal static class Writer
 
     private static (ImmutableArray<Page>, string footer) GenerateAllPages(Registry.Registry registry)
     {
-        var typePages = registry.Types.Values.Select(TypePage).ToImmutableArray();
-        var kindPages = registry.Kinds.Select(KindPage).ToImmutableArray();
+        var typePages = registry.TypeFromName.Values.Select(TypePage).ToImmutableArray();
+        var kindPages = registry.KindFromName.Values.Select(KindPage).ToImmutableArray();
         var groupPages = registry.GroupFromName.Values.Select(GroupPage).ToImmutableArray();
         var enumBlocks = registry.EnumBlocks.Select(EnumBlocksPage).ToImmutableArray();
         var commandPages = registry.CommandFromName.Values.Select(c => CommandPage(c, registry)).ToImmutableArray();

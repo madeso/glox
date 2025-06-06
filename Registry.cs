@@ -32,8 +32,8 @@ internal sealed class Registry(
     ImmutableArray<ExtensionDef> extensions,
     ImmutableArray<string> comments)
 {
-    internal ImmutableDictionary<string, TypeDef> Types { get; } = types.ToImmutableDictionary(x => x.Name, x => x);
-    internal ImmutableArray<KindDef> Kinds { get; } = kinds;
+    internal ImmutableDictionary<string, TypeDef> TypeFromName { get; } = types.ToImmutableDictionary(x => x.Name, x => x);
+    internal Dictionary<string, KindDef> KindFromName { get; } = kinds.ToDictionary(x => x.Name, x => x);
     internal Dictionary<string, GroupDef> GroupFromName { get; } = groups.ToDictionary(x => x.Name, x => x);
     internal ImmutableArray<EnumBlock> EnumBlocks { get; } = enumBlocks;
     internal ImmutableDictionary<string, CommandDef> CommandFromName { get; } = commands.ToImmutableDictionary(x => x.Proto.Name, x => x);
@@ -52,8 +52,8 @@ internal sealed class Registry(
 
     internal void Resolve(Level level)
     {
-        foreach (var t in Types.Values) t.Resolve(this, level);
-        foreach (var k in Kinds) k.Resolve(this, level);
+        foreach (var t in TypeFromName.Values) t.Resolve(this, level);
+        foreach (var k in KindFromName.Values) k.Resolve(this, level);
         foreach (var g in GroupFromName.Values) g.Resolve(this, level);
         foreach (var e in EnumBlocks) e.Resolve(this, level);
         foreach (var c in CommandFromName.Values) c.Resolve(this, level);
@@ -85,7 +85,16 @@ internal sealed class Registry(
 
     internal CommandDef? FindCommand(string name) => CollectionExtensions.GetValueOrDefault(CommandFromName, name);
 
-    internal TypeDef? FindType(string name) => CollectionExtensions.GetValueOrDefault(Types, name);
+    internal TypeDef? FindType(string name) => CollectionExtensions.GetValueOrDefault(TypeFromName, name);
+
+    public KindDef GetKind(string name)
+    {
+        if (KindFromName.TryGetValue(name, out var def)) return def;
+
+        def = new KindDef(name, null);
+        KindFromName.Add(name, def);
+        return def;
+    }
 }
 
 internal sealed class Klass(string name)
@@ -238,7 +247,7 @@ internal sealed class CommandDef(
 
     internal static CommandDef Null()
     {
-        return new CommandDef(new ProtoDef(null, null, "<missing>", []), [], null, null, null, null, null);
+        return new CommandDef(new ProtoDef(null, "<missing>", []), [], null, null, null, null, null);
     }
 }
 
@@ -298,21 +307,27 @@ internal sealed class ProtoNameMember(string name) : IProtoMember
     }
 }
 
-internal sealed class ProtoPTypeMember(Location location, string @ref) : IProtoMember
+internal sealed class ProtoPTypeMember(Location location, string typeRef) : IProtoMember
 {
     public TypeDef? Type { get; private set; } = null;
-    public string? Kind { get; set; } = null;
+    
+    public string? KindRef { get; set; } = null;
+    public KindDef? Kind { get; private set; } = null;
+    
     public string? KlassRef { get; set; } = null;
     public Klass? Klass { get; private set; } = null;
+
+    public string? GroupRef { get; set; } = null;
+    public GroupDef? Group { get; set; }
 
     public void Resolve(Registry registry, Level level)
     {
         if (level != Level.ResolveGroupAndKlassRefs) return;
 
-        var found = registry.FindType(@ref);
+        var found = registry.FindType(typeRef);
         if (found == null)
         {
-            location.ReportError($"Missing ptype {@ref}");
+            location.ReportError($"Missing type {typeRef}");
             return;
         }
 
@@ -322,6 +337,16 @@ internal sealed class ProtoPTypeMember(Location location, string @ref) : IProtoM
         {
             Klass = registry.GetKlass(KlassRef);
         }
+
+        if (GroupRef != null)
+        {
+            Group = registry.GetGroup(GroupRef);
+        }
+
+        if (KindRef != null)
+        {
+            Kind = registry.GetKind(KindRef);
+        }
     }
 
     public void Visit(IProtoMemberVisitor vis)
@@ -330,10 +355,9 @@ internal sealed class ProtoPTypeMember(Location location, string @ref) : IProtoM
     }
 }
 
-internal sealed class ProtoDef(string? group, ProtoPTypeMember? ptype, string name, ImmutableArray<IProtoMember> body)
+internal sealed class ProtoDef(ProtoPTypeMember? ptype, string name, ImmutableArray<IProtoMember> body)
 {
     internal string Name { get; } = name;
-    internal string? Group { get; } = group;
 
     internal ProtoPTypeMember? Ptype { get; } = ptype;
 
@@ -803,7 +827,7 @@ internal static class Parser
         }
 
         var ptype = ptypes.FirstOrDefault();
-        if (klassRef != null || kind != null)
+        if (klassRef != null || kind != null || group != null)
         {
             if (ptype == null)
             {
@@ -811,13 +835,13 @@ internal static class Parser
             }
             else
             {
-                ptype.Kind = kind;
+                ptype.KindRef = kind;
                 ptype.KlassRef = klassRef;
+                ptype.GroupRef = group;
             }
         }
 
         return new ProtoDef(
-            group: group,
             ptype: ptype,
             body: body,
             name: name
