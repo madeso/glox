@@ -140,6 +140,7 @@ internal sealed class KindDef(string name, string? desc)
 {
     internal string Name { get; } = name;
     internal string? Desc { get; } = desc;
+    public List<CommandDef> Commands { get; } = new();
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -355,6 +356,7 @@ internal sealed class ProtoPTypeMember(CommandDef ownerCommand, Location locatio
         if (KindRef != null)
         {
             Kind = registry.GetKind(KindRef);
+            Kind.Commands.Add(ownerCommand);
         }
     }
 
@@ -364,20 +366,27 @@ internal sealed class ProtoPTypeMember(CommandDef ownerCommand, Location locatio
     }
 }
 
-internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kind, string? len, string? klassRef, string? typeRef, string? apiEntry, string name, ImmutableArray<string> body)
+internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string? typeRef, string? apiEntry, string name, ImmutableArray<string> body)
 {
     private readonly Location _location = location;
 
     internal string? GroupRef { get; } = groupRef;
     internal GroupDef? Group { get; private set; } = null;
-    internal string? Kind { get; } = kind;
+
+    internal string? KindRef { get; } = kindRef;
+    public KindDef? Kind { get; private set; } = null;
+
     internal string? Len { get; } = len;
+    
     internal string? KlassRef { get; } = klassRef;
     internal Klass? Klass { get; private set; } = null;
+    
     internal string? TypeRef { get; } = typeRef;
     internal TypeDef Type { get; private set; } = TypeDef.Null();
+    
     internal string? ApiEntry { get; } = apiEntry;
     internal string Name { get; } = name;
+    
     internal ImmutableArray<string> Body { get; } = body;
 
     internal void Resolve(Registry registry, Level level)
@@ -406,6 +415,12 @@ internal sealed class ParamDef(Location location, CommandDef ownerCommand, strin
         {
             Klass = registry.GetKlass(KlassRef);
             Klass.Commands.Add(ownerCommand);
+        }
+
+        if (KindRef != null)
+        {
+            Kind = registry.GetKind(KindRef);
+            Kind.Commands.Add(ownerCommand);
         }
     }
 }
@@ -937,7 +952,7 @@ internal static class Parser
         var body = el.ReadInnerText();
         return new ParamDef(el.Location, command,
             groupRef: group,
-            kind: kind,
+            kindRef: kind,
             len: len,
             klassRef: @class,
             typeRef: ptype,

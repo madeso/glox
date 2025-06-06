@@ -63,6 +63,7 @@ internal static class Writer
             Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", k.Name)
                 .Add("Description", k.Desc)
+                .AddArray("Used in", k.Commands, LinkToCommand)
                 .BuildList()
         );
 
@@ -207,7 +208,7 @@ internal static class Writer
         new PropsBuilder()
             .Add("Name", p.Name)
             .Add("Group", p.Group, LinkToGroup)
-            .Add("Kind", p.Kind)
+            .Add("Kind", p.Kind, LinkToKind)
             .Add("Len", p.Len)
             .Add("Class", p.Klass, LinkToKlass)
             .Add("Type", p.Type, LinkToType)
