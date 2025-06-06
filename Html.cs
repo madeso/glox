@@ -129,29 +129,29 @@ internal static class Writer
         return partial.Select(x => x.Action.With(x.Root));
     }
 
-    private static string FileForCommand(CommandDef c) => $"command_{c.Proto.Name}";
-    private static string LinkToCommand(CommandDef c) => MakeLink(FileForCommand(c), c.Proto.Name);
+    private static string FileForCommand(CommandDef c) => $"command_{c.Name}";
+    private static string LinkToCommand(CommandDef c) => MakeLink(FileForCommand(c), c.Name);
     private static Page CommandPage(Registry.CommandDef c, Registry.Registry reg) =>
         new Page(
             FileName: FileForCommand(c),
-            Title: $"Command: {c.Proto.Name}",
+            Title: $"Command: {c.Name}",
             Caption: null,
             Body:
                 new PropsBuilder(KeyStyle.Bold)
-                    .Add("Name", c.Proto.Name)
+                    .Add("Name", c.Name)
                     .Add("Alias", c.Alias)
                     .Add("VecEquiv", c.VecEquiv)
                     .Add("Namespace", c.Namespace)
                     .Add("Comment", c.Comment)
-                    .Add("Return Group", c.Proto.Ptype?.Group, LinkToGroup)
-                    .Add("Return Kind", c.Proto.Ptype?.Kind, LinkToKind)
-                    .Add("Return Class", c.Proto.Ptype?.Klass, LinkToKlass)
-                    .AddStruct("Prop Body", c.Proto.Body, b => InCode(b.Visit(new HtmlCodeGenerator()).Code))
+                    .Add("Return Group", c.ReturnValue?.Group, LinkToGroup)
+                    .Add("Return Kind", c.ReturnValue?.Kind, LinkToKind)
+                    .Add("Return Class", c.ReturnValue?.Klass, LinkToKlass)
+                    .AddStruct("Prototype", c.Prototype, b => InCode(b.Visit(new HtmlCodeGenerator()).Code))
                     .AddArray("Params", c.Params, x => PropsForParam(x).BuildCommaSeparated())
                     .Add("Glx", c.Glx, x => PropsForGlx(x).BuildCommaSeparated())
-                    .AddArray("Mentioned in features", FindRoots(reg.Features, otherCommand => otherCommand.Proto.Name == c.Proto.Name, f => f.AllCommands)
+                    .AddArray("Mentioned in features", FindRoots(reg.Features, otherCommand => otherCommand.Name == c.Name, f => f.AllCommands)
                         , f => $"{LinkToFeature(f.What)} ({f.Action})")
-                    .AddArray("Mentioned in extension", FindRoots(reg.Extensions, otherCommand => otherCommand.Proto.Name == c.Proto.Name, f => f.AllCommands)
+                    .AddArray("Mentioned in extension", FindRoots(reg.Extensions, otherCommand => otherCommand.Name == c.Name, f => f.AllCommands)
                         , f => $"{LinkToExtension(f.What)} ({f.Action})")
                     .BuildList()
         );
@@ -194,7 +194,7 @@ internal static class Writer
             Body:
             new PropsBuilder(KeyStyle.Bold)
                 .Add("Name", c.Name)
-                .AddArray("Used in", c.Params.Select(x => x.OwnerCommand), LinkToCommand)
+                .AddArray("Used in", c.Commands, LinkToCommand)
                 .BuildList()
 
         );

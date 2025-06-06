@@ -84,15 +84,25 @@ internal class El : IDisposable
 
     public Location Location => _location;
 
-    public IEnumerable<El> ElementsNamed(string name)
+    public IEnumerable<El> ElementsNamed(string name, bool dispose = true)
     {
         _unusedElements.Remove(name);
         int index = 0;
         foreach (var x in _elements)
         {
             if (x.Name != name) continue;
-            using var r = new El(_location.Sub(name, index), x);
-            yield return r;
+            var r = new El(_location.Sub(name, index), x);
+            try
+            {
+                yield return r;
+            }
+            finally
+            {
+                if (dispose)
+                {
+                    r.Dispose();
+                }
+            }
             index += 1;
         }
     }
