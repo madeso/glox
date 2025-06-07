@@ -576,12 +576,22 @@ internal sealed class FeatureDef(
     }
 }
 
+internal enum Support
+{
+    gl,
+    gles1,
+    gles2,
+    glcore,
+    glsc2,
+    disabled,
+}
+
 internal sealed class ExtensionDef(
-    Location location, string name, string supported, string? protect, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
+    Location location, string name, ImmutableArray<Support> supported, string? protect, string? comment, ImmutableArray<InterfaceDef> require, ImmutableArray<InterfaceDef> remove)
 {
     private Location _location = location;
     internal string Name { get; } = name;
-    internal string[] Supported { get; } = supported.Split("|", StringSplitOptions.TrimEntries);
+    internal ImmutableArray<Support> Supported { get; } = supported;
     internal string? Protect { get; } = protect;
     internal string? Comment { get; } = comment;
     internal ImmutableArray<InterfaceDef> Require { get; } = require;
@@ -593,34 +603,22 @@ internal sealed class ExtensionDef(
 
     internal void Resolve(Registry registry, Level level)
     {
-        if (Supported.Any(ContainsNonIdentifier))
-        {
-            _location.ReportError("Supported contains non id", string.Join(", ", Supported));
-        }
-
         foreach (var r in Require) r.Resolve(registry, level);
         foreach (var r in Remove) r.Resolve(registry, level);
     }
+}
 
-    private static bool ContainsNonIdentifier(string arg)
-    {
-        if (string.IsNullOrEmpty(arg))
-            return true;
-        if (!(char.IsLetter(arg[0]) || arg[0] == '_'))
-            return true;
-        for (int i = 1; i < arg.Length; i++)
-        {
-            if (!(char.IsLetterOrDigit(arg[i]) || arg[i] == '_'))
-                return true;
-        }
-        return false;
-    }
+internal enum ProfileName
+{
+    core,
+    compatibility,
+    common,
 }
 
 internal sealed class InterfaceDef(
-    string? profile, NamedApi? api, string? comment, ImmutableArray<InterfaceEnum> enums, ImmutableArray<InterfaceCommand> commands, ImmutableArray<InterfaceType> types)
+    ProfileName? profile, NamedApi? api, string? comment, ImmutableArray<InterfaceEnum> enums, ImmutableArray<InterfaceCommand> commands, ImmutableArray<InterfaceType> types)
 {
-    internal string? Profile { get; } = profile;
+    internal ProfileName? Profile { get; } = profile;
     internal NamedApi? Api { get; } = api;
     internal string? Comment { get; } = comment;
     internal ImmutableArray<InterfaceEnum> Enums { get; } = enums;
@@ -1195,11 +1193,14 @@ internal static class Parser
     private static ExtensionDef ParseExtensionDef(El el)
     {
         var name = el.ReadAttribute("name") ?? "";
-        var supported = el.ReadAttribute("supported") ?? "";
+        var supportedString = el.ReadAttribute("supported");
         var protect = el.ReadAttribute("protect");
         var comment = el.ReadAttribute("comment");
         var require = el.ElementsNamed("require").Select(ParseRequireRemoveDef).ToImmutableArray();
         var remove = el.ElementsNamed("remove").Select(ParseRequireRemoveDef).ToImmutableArray();
+
+        var supported = ParseSupported(el.Location, supportedString?.Split("|", StringSplitOptions.TrimEntries) ?? []).ToImmutableArray();
+
         return new ExtensionDef(el.Location,
             name: name,
             supported: supported,
@@ -1208,6 +1209,38 @@ internal static class Parser
             require: require,
             remove: remove
         );
+    }
+
+    private static IEnumerable<Support> ParseSupported(Location loc, string[] split)
+    {
+        foreach (var s in split)
+        {
+            switch (s)
+            {
+                case "gl":
+                    yield return Support.gl;
+                    break;
+                case "gles1":
+                    yield return Support.gles1;
+                    break;
+                case "gles2":
+                    yield return Support.gles2;
+                    break;
+                case "glcore":
+                    yield return Support.glcore;
+                    break;
+                case "glsc2":
+                    yield return Support.glsc2;
+                    break;
+                case "disabled":
+                    yield return Support.disabled;
+                    break;
+                default:
+                    loc.ReportError($"Invalid support <{s}>");
+                    break;
+            }
+        }
+        yield break;
     }
 
     private static InterfaceDef ParseRequireRemoveDef(El el)
@@ -1228,13 +1261,29 @@ internal static class Parser
             comment: e.ReadAttribute("comment")
         )).ToImmutableArray();
         return new InterfaceDef(
-            profile: profile,
+            profile: profile != null ? ParseProfileName(el.Location, profile) : null,
             api: api,
             comment: comment,
             enums: enums,
             commands: commands,
             types: types
         );
+    }
+
+    private static ProfileName? ParseProfileName(Location loc, string name)
+    {
+        switch (name)
+        {
+            case "core":
+                return ProfileName.core;
+            case "compatibility":
+                return ProfileName.compatibility;
+            case "common":
+                return ProfileName.common;
+            default:
+                loc.ReportError($"Unknown profile {name}");
+                return null;
+        }
     }
 
     internal static Registry Parse(El root)

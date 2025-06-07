@@ -260,7 +260,7 @@ internal static class Writer
 
     private static PropsBuilder PropsForInterface(InterfaceDef r) =>
         new PropsBuilder()
-            .Add("Profile", r.Profile)
+            .AddStruct("Profile", r.Profile, x => MakeBold(x.ToString() ?? ""))
             .AddStruct("Api", r.Api, HtmlFromApi)
             .Add("Comment", r.Comment)
             .AddArray("Enums", r.Enums, x => PropsForInterfaceEnum(x).BuildCommaSeparated() )
@@ -288,7 +288,7 @@ internal static class Writer
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
                     .Add("Name", ext.Name)
-                    .AddArray("Supported", ext.Supported, Escape)
+                    .AddArray("Supported", ext.Supported, x => MakeBold(x.ToString()))
                     .Add("Protect", ext.Protect)
                     .Add("Comment", ext.Comment)
                     .AddArray("Require", ext.Require, x => PropsForInterface(x).BuildCommaSeparated())
