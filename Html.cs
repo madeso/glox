@@ -47,7 +47,7 @@ internal static class Writer
             Body: new PropsBuilder(KeyStyle.Bold)
                 .Add("CodeBlock", t.CodeBlock, EscapeToCode)
                 .Add("Name", t.Name)
-                .Add("Requires", t.Requires)
+                .Add("Requires", t.Requires, LinkToType)
                 .Add("Comment", t.Comment)
                 .Add("ApiEntry", t.ApiEntry)
                 .BuildList()

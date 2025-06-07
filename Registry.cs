@@ -111,31 +111,30 @@ internal sealed class Klass(string name)
     }
 }
 
-internal sealed class TypeDef
+internal sealed class TypeDef(Location? location, string name, string? requiresRef, string? comment, string? apiEntry, string codeBlock)
 {
-    internal string Name { get; }
-    internal string? Requires { get; }
-    internal string? Comment { get; }
-    internal string? ApiEntry { get; }
-    internal string CodeBlock { get; }
-
-    internal TypeDef(string name, string? requires, string? comment, string? apiEntry, string codeBlock)
-    {
-        Name = name;
-        Requires = requires;
-        Comment = comment;
-        ApiEntry = apiEntry;
-        CodeBlock = codeBlock;
-    }
+    internal string Name { get; } = name;
+    internal TypeDef? Requires { get; private set; } = null;
+    internal string? Comment { get; } = comment;
+    internal string? ApiEntry { get; } = apiEntry;
+    internal string CodeBlock { get; } = codeBlock;
 
     internal void Resolve(Registry registry, Level level)
     {
-        // Nothing to resolve
+        if (level != Level.ResolveGroupAndKlassRefs) return;
+        if (requiresRef != null)
+        {
+            Requires = registry.FindType(requiresRef);
+            if (Requires == null)
+            {
+                location?.ReportError($"Type requires is not a valid type {requiresRef}");
+            }
+        }
     }
 
     internal static TypeDef Null()
     {
-        return new TypeDef("<null>", null, null, null, "<null>");
+        return new TypeDef(null, "<null>", null, null, null, "<null>");
     }
 }
 
@@ -721,8 +720,9 @@ internal static class Parser
             name = "missing";
         }
         return new TypeDef(
+            el.Location,
             name: name,
-            requires: requires,
+            requiresRef: requires,
             comment: api,
             apiEntry: comment,
             codeBlock: body
