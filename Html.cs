@@ -45,7 +45,7 @@ internal static class Writer
             Title: $"Type: {t.Name}",
             Caption: null,
             Body: new PropsBuilder(KeyStyle.Bold)
-                .Add("CodeBlock", t.CodeBlock, EscapeToCode)
+                .Add("CodeBlock", t.CodeBlock, b => InCode(b.Visit(new HtmlCodeGenerator()).Code))
                 .Add("Name", t.Name)
                 .Add("Requires", t.Requires, LinkToType)
                 .Add("Comment", t.Comment)
@@ -157,7 +157,7 @@ internal static class Writer
                     .BuildList()
         );
 
-    private sealed class HtmlCodeGenerator : IProtoMemberVisitor, ParamVisitor
+    private sealed class HtmlCodeGenerator : IProtoMemberVisitor, ParamVisitor, ITypeCodeVisitor
     {
         public string Code { get; private set; } = "";
 
@@ -208,6 +208,21 @@ internal static class Writer
         public void VisitApiEntry(ParamApiEntryMember entry)
         {
             Code += "API_ENTRY";
+        }
+
+        public void VisitText(TypeCodeText member)
+        {
+            Code += Escape(member.Value);
+        }
+
+        public void VisitApiEntry(TypeCodeApiEntry apiEntry)
+        {
+            Code += "API_ENTRY";
+        }
+
+        public void VisitName(TypeCodeName name)
+        {
+            Code += MakeBold(Escape(name.Name));
         }
     }
 

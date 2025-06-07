@@ -13,6 +13,8 @@ namespace Glox.Registry;
 
 // Data model for the Khronos OpenGL API Registry Schema
 
+
+
 internal enum Level
 {
     ResolveGroupAndKlassRefs,
@@ -111,13 +113,13 @@ internal sealed class Klass(string name)
     }
 }
 
-internal sealed class TypeDef(Location? location, string name, string? requiresRef, string? comment, string? apiEntry, string codeBlock)
+internal sealed class TypeDef(Location? location, string name, string? requiresRef, string? comment, string? apiEntry, IEnumerable<ITypeCode> codeBlock)
 {
     internal string Name { get; } = name;
     internal TypeDef? Requires { get; private set; } = null;
     internal string? Comment { get; } = comment;
     internal string? ApiEntry { get; } = apiEntry;
-    internal string CodeBlock { get; } = codeBlock;
+    internal IEnumerable<ITypeCode> CodeBlock { get; } = codeBlock;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -134,7 +136,7 @@ internal sealed class TypeDef(Location? location, string name, string? requiresR
 
     internal static TypeDef Null()
     {
-        return new TypeDef(null, "<null>", null, null, null, "<null>");
+        return new TypeDef(null, "<null>", null, null, null, []);
     }
 }
 
@@ -262,206 +264,6 @@ internal sealed class CommandDef(ImmutableArray<ParamDef> @params, string? alias
     }
 }
 
-interface IProtoMember
-{
-    void Resolve(Registry registry, Level level);
-    void Visit(IProtoMemberVisitor vis);
-}
-
-internal static class IProtoMemberUtils
-{
-    public static T Visit<T>(this IEnumerable<IProtoMember> member, T visitor) where T: IProtoMemberVisitor
-    {
-        foreach (var m in member)
-        {
-            m.Visit(visitor);
-        }
-        return visitor;
-    }
-
-    public static T Visit<T>(this IEnumerable<ParamBody> member, T visitor) where T : ParamVisitor
-    {
-        foreach (var m in member)
-        {
-            m.Visit(visitor);
-        }
-        return visitor;
-    }
-}
-
-interface IProtoMemberVisitor
-{
-    void VisitText(ProtoTextMember member);
-    void VisitName(ProtoNameMember member);
-    void VisitPType(ProtoPTypeMember member);
-}
-
-internal sealed class ProtoTextMember(string value) : IProtoMember
-{
-    public string Value { get; } = value;
-    public static ProtoTextMember? Parse(string? s)
-    {
-        if (string.IsNullOrEmpty(s)) return null;
-        return new ProtoTextMember(s);
-    }
-    public void Resolve(Registry registry, Level level)
-    {
-        // Nothing to resolve
-    }
-    public void Visit(IProtoMemberVisitor vis)
-    {
-        vis.VisitText(this);
-    }
-}
-
-internal sealed class ProtoNameMember(string name) : IProtoMember
-{
-    public string Name { get; } = name;
-    public void Resolve(Registry registry, Level level)
-    {
-        // Nothing to resolve
-    }
-    public void Visit(IProtoMemberVisitor vis)
-    {
-        vis.VisitName(this);
-    }
-}
-
-internal sealed class ProtoPTypeMember(CommandDef ownerCommand, Location location, string typeRef) : IProtoMember
-{
-    public TypeDef? Type { get; private set; } = null;
-    
-    public string? KindRef { get; set; } = null;
-    public KindDef? Kind { get; private set; } = null;
-    
-    public string? KlassRef { get; set; } = null;
-    public Klass? Klass { get; private set; } = null;
-
-    public string? GroupRef { get; set; } = null;
-    public GroupDef? Group { get; set; }
-
-    public void Resolve(Registry registry, Level level)
-    {
-        if (level != Level.ResolveGroupAndKlassRefs) return;
-
-        var found = registry.FindType(typeRef);
-        if (found == null)
-        {
-            location.ReportError($"Missing type {typeRef}");
-            return;
-        }
-
-        Type = found;
-
-        if (KlassRef != null)
-        {
-            Klass = registry.GetKlass(KlassRef);
-            Klass.Commands.Add(ownerCommand);
-        }
-
-        if (GroupRef != null)
-        {
-            Group = registry.GetGroup(GroupRef);
-        }
-
-        if (KindRef != null)
-        {
-            Kind = registry.GetKind(KindRef);
-            Kind.Commands.Add(ownerCommand);
-        }
-    }
-
-    public void Visit(IProtoMemberVisitor vis)
-    {
-        vis.VisitPType(this);
-    }
-}
-
-interface ParamVisitor
-{
-    void VisitText(ParamTextMember text);
-    void VisitName(ParamNameMember name);
-    void VisitPtype(ParamPTypeMember ptype);
-    void VisitApiEntry(ParamApiEntryMember entry);
-}
-
-interface ParamBody
-{
-    void Resolve(Registry registry, Level level);
-    void Visit(ParamVisitor visitor);
-}
-
-internal sealed class ParamTextMember(string value) : ParamBody
-{
-    public string Value { get; } = value;
-    public static ParamBody? Parse(string? s)
-    {
-        if (string.IsNullOrEmpty(s)) return null;
-        return new ParamTextMember(s);
-    }
-
-    public void Resolve(Registry registry, Level level)
-    {
-    }
-
-    public void Visit(ParamVisitor visitor)
-    {
-        visitor.VisitText(this);
-    }
-}
-
-internal sealed class ParamNameMember(string name) : ParamBody
-{
-    public string Name { get; } = name;
-
-    public void Resolve(Registry registry, Level level)
-    {
-    }
-
-    public void Visit(ParamVisitor visitor)
-    {
-        visitor.VisitName(this);
-    }
-}
-
-internal sealed class ParamPTypeMember(Location loc, string? typeRef) : ParamBody
-{
-    public void Resolve(Registry registry, Level level)
-    {
-        if (level != Level.ResolveGroupAndKlassRefs) return;
-        if (typeRef != null)
-        {
-            var found = registry.FindType(typeRef);
-            if (found != null)
-            {
-                Type = found;
-            }
-            else
-            {
-                loc.ReportError($"missing reference {typeRef}");
-            }
-        }
-    }
-
-    public void Visit(ParamVisitor visitor)
-    {
-        visitor.VisitPtype(this);
-    }
-
-    public TypeDef? Type { get; set; } = null;
-}
-
-internal sealed class ParamApiEntryMember : ParamBody
-{
-    public void Resolve(Registry registry, Level level)
-    {
-    }
-
-    public void Visit(ParamVisitor visitor)
-    {
-        visitor.VisitApiEntry(this);
-    }
-}
 
 internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string name, ImmutableArray<ParamBody> body)
 {
@@ -708,12 +510,14 @@ internal static class Parser
 {
     private static TypeDef ParseTypeDef(El el)
     {
-        var name = el.ElementsNamed("name").Select(n => string.Join("", n.ReadInnerText())).FirstOrDefault() ?? el.ReadAttribute("name");
-        var count = el.ElementsNamed("apientry").Count();
         var requires = el.ReadAttribute("requires");
         var api = el.ReadAttribute("api");
         var comment = el.ReadAttribute("comment");
-        var body = string.Join("", el.ReadInnerText());
+        
+        var body = CodeParser.ParseTypeCode(el);
+
+        var name = CodeExtractor.ExtractNameFromTypeBlock(body) ?? el.ReadAttribute("name");
+
         if (name == null)
         {
             el.Location.ReportError("Missing name for type");
@@ -877,10 +681,9 @@ internal static class Parser
             ns: commandsNamespace
         );
 
-        var children = protoEl?.ReadChildren().ToImmutableArray() ?? [];
-        var body = protoEl != null ? InsertSpace(ParseProtoChildren(command, protoEl.Location, children)).ToImmutableArray() : [];
-        var name = body.Visit(new NameVisitor()).Names.FirstOrDefault();
-        var ptypes = body.Visit(new PtypeVistor()).Ptypes;
+        var body = protoEl != null ? CodeParser.ParseCommandBody(protoEl, command) : [];
+        var name = CodeExtractor.ExtractNameFromCommandBlock(body);
+        var ptypes = CodeExtractor.ExtractPtypes(body);
 
         var reporter = protoEl ?? el;
 
@@ -922,135 +725,6 @@ internal static class Parser
         return command;
     }
 
-    private class NameVisitor : IProtoMemberVisitor, ParamVisitor
-    {
-        public List<string> Names { get; } = [];
-
-        public void VisitText(ProtoTextMember member)
-        {
-        }
-
-        public void VisitName(ProtoNameMember member)
-        {
-            Names.Add(member.Name);
-        }
-
-        public void VisitPType(ProtoPTypeMember member)
-        {
-        }
-
-        public void VisitText(ParamTextMember text)
-        {
-        }
-
-        public void VisitName(ParamNameMember name)
-        {
-            Names.Add(name.Name);
-        }
-
-        public void VisitPtype(ParamPTypeMember ptype)
-        {
-        }
-
-        public void VisitApiEntry(ParamApiEntryMember entry)
-        {
-        }
-    }
-
-    private class PtypeVistor : IProtoMemberVisitor
-    {
-        public List<ProtoPTypeMember> Ptypes { get; } = [];
-
-        public void VisitText(ProtoTextMember member)
-        {
-        }
-
-        public void VisitName(ProtoNameMember member)
-        {
-        }
-
-        public void VisitPType(ProtoPTypeMember member)
-        {
-            Ptypes.Add(member);
-        }
-    }
-
-    private static IEnumerable<IProtoMember> InsertSpace(IEnumerable<IProtoMember> mems)
-    {
-        IProtoMember? last = null;
-        foreach (var current in mems)
-        {
-            if (last != null)
-            {
-                if (IsBlock(last) && IsBlock(current))
-                {
-                    yield return new ProtoTextMember(" ");
-                }
-            }
-
-            last = current;
-            yield return current;
-        }
-
-        static bool IsBlock(IProtoMember m) => m is ProtoPTypeMember or ProtoNameMember;
-    }
-
-    private static IEnumerable<IProtoMember> ParseProtoChildren(CommandDef ownerCommand, Location root, IEnumerable<XmlNode> nodes)
-    {
-        int index = 0;
-        foreach (var n in nodes)
-        {
-            switch (n)
-            {
-                case XmlComment:
-                    continue;
-                case XmlElement xmlElement:
-                    {
-                        var r = ParseProtoElement(ownerCommand, xmlElement, root.Sub(xmlElement.Name, index));
-                        if (r != null) yield return r;
-                    }
-                    break;
-                case XmlSignificantWhitespace sw:
-                    {
-                        var r = ProtoTextMember.Parse(sw.Value);
-                        if (r != null) yield return r;
-                    }
-                    break;
-                case XmlText t:
-                    {
-                        var r = ProtoTextMember.Parse(t.Value);
-                        if (r != null) yield return r;
-                    }
-                    break;
-                case XmlWhitespace ws:
-                    {
-                        var r = ProtoTextMember.Parse(ws.Value);
-                        if (r != null) yield return r;
-                    }
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(n));
-            }
-
-            index += 1;
-        }
-    }
-
-    private static IProtoMember? ParseProtoElement(CommandDef ownerCommand, XmlElement elem, Location loc)
-    {
-        switch (elem.Name)
-        {
-            case "name":
-                // <name> tag: function/type/param name
-                return new ProtoNameMember(elem.InnerText);
-            case "ptype":
-                // <ptype> tag: type name
-                return new ProtoPTypeMember(ownerCommand, loc, elem.InnerText);
-            default:
-                return null;
-        }
-    }
-
     private static ParamDef ParseParamDef(El el, CommandDef command)
     {
         var group = el.ReadAttribute("group");
@@ -1058,10 +732,9 @@ internal static class Parser
         var len = el.ReadAttribute("len");
         var @class = el.ReadAttribute("class");
 
-        var children = el.ReadChildren().ToImmutableArray();
-        var body = InsertSpace(ParseParamChildren(command, el.Location, children)).ToImmutableArray();
+        var body = CodeParser.ParseParamBody(el);
 
-        var name = body.Visit(new NameVisitor()).Names.FirstOrDefault();
+        var name = CodeExtractor.ExtractNameFromParam(body);
         if (name == null)
         {
             el.Location.ReportError("Missing name");
@@ -1076,82 +749,6 @@ internal static class Parser
             name: name,
             body: body
         );
-    }
-
-    private static IEnumerable<ParamBody> InsertSpace(IEnumerable<ParamBody> mems)
-    {
-        ParamBody? last = null;
-        foreach (var current in mems)
-        {
-            if (last != null)
-            {
-                if (IsBlock(last) && IsBlock(current))
-                {
-                    yield return new ParamTextMember(" ");
-                }
-            }
-
-            last = current;
-            yield return current;
-        }
-
-        static bool IsBlock(ParamBody m) => m is ParamPTypeMember or ParamNameMember;
-    }
-
-    private static IEnumerable<ParamBody> ParseParamChildren(CommandDef ownerCommand, Location root, IEnumerable<XmlNode> nodes)
-    {
-        int index = 0;
-        foreach (var n in nodes)
-        {
-            switch (n)
-            {
-                case XmlComment:
-                    continue;
-                case XmlElement xmlElement:
-                {
-                    var r = ParseParamElement(ownerCommand, xmlElement, root.Sub(xmlElement.Name, index));
-                    if (r != null) yield return r;
-                }
-                    break;
-                case XmlSignificantWhitespace sw:
-                {
-                    var r = ParamTextMember.Parse(sw.Value);
-                    if (r != null) yield return r;
-                }
-                    break;
-                case XmlText t:
-                {
-                    var r = ParamTextMember.Parse(t.Value);
-                    if (r != null) yield return r;
-                }
-                    break;
-                case XmlWhitespace ws:
-                {
-                    var r = ParamTextMember.Parse(ws.Value);
-                    if (r != null) yield return r;
-                }
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(n));
-            }
-
-            index += 1;
-        }
-    }
-
-    private static ParamBody? ParseParamElement(CommandDef ownerCommand, XmlElement elem, Location loc)
-    {
-        switch (elem.Name)
-        {
-            case "name":
-                return new ParamNameMember(elem.InnerText);
-            case "ptype":
-                return new ParamPTypeMember(loc, elem.InnerText);
-            case "apientry":
-                return new ParamApiEntryMember();
-            default:
-                return null;
-        }
     }
 
     private static GlxDef ParseGlxDef(El el)
