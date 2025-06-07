@@ -1,8 +1,11 @@
 ﻿using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks.Dataflow;
 using System.Xml;
 using System.Xml.Linq;
+using Glox.Html;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -276,6 +279,15 @@ internal static class IProtoMemberUtils
         }
         return visitor;
     }
+
+    public static T Visit<T>(this IEnumerable<ParamBody> member, T visitor) where T : ParamVisitor
+    {
+        foreach (var m in member)
+        {
+            m.Visit(visitor);
+        }
+        return visitor;
+    }
 }
 
 interface IProtoMemberVisitor
@@ -366,7 +378,93 @@ internal sealed class ProtoPTypeMember(CommandDef ownerCommand, Location locatio
     }
 }
 
-internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string? typeRef, string? apiEntry, string name, ImmutableArray<string> body)
+interface ParamVisitor
+{
+    void VisitText(ParamTextMember text);
+    void VisitName(ParamNameMember name);
+    void VisitPtype(ParamPTypeMember ptype);
+    void VisitApiEntry(ParamApiEntryMember entry);
+}
+
+interface ParamBody
+{
+    void Resolve(Registry registry, Level level);
+    void Visit(ParamVisitor visitor);
+}
+
+internal sealed class ParamTextMember(string value) : ParamBody
+{
+    public string Value { get; } = value;
+    public static ParamBody? Parse(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        return new ParamTextMember(s);
+    }
+
+    public void Resolve(Registry registry, Level level)
+    {
+    }
+
+    public void Visit(ParamVisitor visitor)
+    {
+        visitor.VisitText(this);
+    }
+}
+
+internal sealed class ParamNameMember(string name) : ParamBody
+{
+    public string Name { get; } = name;
+
+    public void Resolve(Registry registry, Level level)
+    {
+    }
+
+    public void Visit(ParamVisitor visitor)
+    {
+        visitor.VisitName(this);
+    }
+}
+
+internal sealed class ParamPTypeMember(Location loc, string? typeRef) : ParamBody
+{
+    public void Resolve(Registry registry, Level level)
+    {
+        if (level != Level.ResolveGroupAndKlassRefs) return;
+        if (typeRef != null)
+        {
+            var found = registry.FindType(typeRef);
+            if (found != null)
+            {
+                Type = found;
+            }
+            else
+            {
+                loc.ReportError($"missing reference {typeRef}");
+            }
+        }
+    }
+
+    public void Visit(ParamVisitor visitor)
+    {
+        visitor.VisitPtype(this);
+    }
+
+    public TypeDef? Type { get; set; } = null;
+}
+
+internal sealed class ParamApiEntryMember : ParamBody
+{
+    public void Resolve(Registry registry, Level level)
+    {
+    }
+
+    public void Visit(ParamVisitor visitor)
+    {
+        visitor.VisitApiEntry(this);
+    }
+}
+
+internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string name, ImmutableArray<ParamBody> body)
 {
     private readonly Location _location = location;
 
@@ -380,35 +478,22 @@ internal sealed class ParamDef(Location location, CommandDef ownerCommand, strin
     
     internal string? KlassRef { get; } = klassRef;
     internal Klass? Klass { get; private set; } = null;
-    
-    internal string? TypeRef { get; } = typeRef;
-    internal TypeDef Type { get; private set; } = TypeDef.Null();
-    
-    internal string? ApiEntry { get; } = apiEntry;
+
     internal string Name { get; } = name;
     
-    internal ImmutableArray<string> Body { get; } = body;
+    internal ImmutableArray<ParamBody> Body { get; } = body;
 
     internal void Resolve(Registry registry, Level level)
     {
+        foreach (var b in Body)
+        {
+            b.Resolve(registry, level);
+        }
         if (level != Level.ResolveGroupAndKlassRefs) return;
 
         if (GroupRef != null)
         {
             Group = registry.GetGroup(GroupRef);
-        }
-
-        if (TypeRef != null)
-        {
-            var found = registry.FindType(TypeRef);
-            if (found != null)
-            {
-                Type = found;
-            }
-            else
-            {
-                _location.ReportError($"missing reference {TypeRef}");
-            }
         }
 
         if (KlassRef != null)
@@ -422,6 +507,15 @@ internal sealed class ParamDef(Location location, CommandDef ownerCommand, strin
             Kind = registry.GetKind(KindRef);
             Kind.Commands.Add(ownerCommand);
         }
+    }
+
+    public T Visit<T>(T visitor) where T: ParamVisitor
+    {
+        foreach (var b in Body)
+        {
+            b.Visit(visitor);
+        }
+        return visitor;
     }
 }
 
@@ -772,9 +866,9 @@ internal static class Parser
                 e.Dispose();
             }
         }
-        var group = protoEl.ReadAttribute("group");
-        var klassRef = protoEl.ReadAttribute("class");
-        var kind = protoEl.ReadAttribute("kind");
+        var group = protoEl?.ReadAttribute("group");
+        var klassRef = protoEl?.ReadAttribute("class");
+        var kind = protoEl?.ReadAttribute("kind");
 
         var command = new CommandDef(
             @params: [],
@@ -785,20 +879,22 @@ internal static class Parser
             ns: commandsNamespace
         );
 
-        var children = protoEl.ReadChildren().ToImmutableArray();
-        var body = InsertSpace(ParseProtoChildren(command, protoEl.Location, children)).ToImmutableArray();
+        var children = protoEl?.ReadChildren().ToImmutableArray() ?? [];
+        var body = protoEl != null ? InsertSpace(ParseProtoChildren(command, protoEl.Location, children)).ToImmutableArray() : [];
         var name = body.Visit(new NameVisitor()).Names.FirstOrDefault();
         var ptypes = body.Visit(new PtypeVistor()).Ptypes;
 
+        var reporter = protoEl ?? el;
+
         if (name == null)
         {
-            protoEl.Location.ReportError("Missing (or too many) names");
+            reporter.Location.ReportError("Missing name");
             name = "<missing>";
         }
 
         if (ptypes.Count > 1)
         {
-            protoEl.Location.ReportError("Too many ptypes");
+            reporter.Location.ReportError("Too many ptypes");
         }
 
         var ptype = ptypes.FirstOrDefault();
@@ -806,7 +902,7 @@ internal static class Parser
         {
             if (ptype == null)
             {
-                protoEl.Location.ReportError("Has kind or class but no ptype");
+                reporter.Location.ReportError("Has kind or class but no ptype");
             }
             else
             {
@@ -828,7 +924,7 @@ internal static class Parser
         return command;
     }
 
-    private class NameVisitor : IProtoMemberVisitor
+    private class NameVisitor : IProtoMemberVisitor, ParamVisitor
     {
         public List<string> Names { get; } = [];
 
@@ -842,6 +938,23 @@ internal static class Parser
         }
 
         public void VisitPType(ProtoPTypeMember member)
+        {
+        }
+
+        public void VisitText(ParamTextMember text)
+        {
+        }
+
+        public void VisitName(ParamNameMember name)
+        {
+            Names.Add(name.Name);
+        }
+
+        public void VisitPtype(ParamPTypeMember ptype)
+        {
+        }
+
+        public void VisitApiEntry(ParamApiEntryMember entry)
         {
         }
     }
@@ -946,20 +1059,101 @@ internal static class Parser
         var kind = el.ReadAttribute("kind");
         var len = el.ReadAttribute("len");
         var @class = el.ReadAttribute("class");
-        var apientry = el.ElementsNamed("apientry").Select(a => a.ReadInnerText().FirstOrDefault()).FirstOrDefault();
-        var ptype = el.ElementsNamed("ptype").Select(p => p.ReadInnerText().FirstOrDefault()).FirstOrDefault();
-        var name = el.ElementsNamed("name").Select(n => n.ReadInnerText().FirstOrDefault()).FirstOrDefault() ?? "";
-        var body = el.ReadInnerText();
+
+        var children = el.ReadChildren().ToImmutableArray();
+        var body = InsertSpace(ParseParamChildren(command, el.Location, children)).ToImmutableArray();
+
+        var name = body.Visit(new NameVisitor()).Names.FirstOrDefault();
+        if (name == null)
+        {
+            el.Location.ReportError("Missing name");
+            name = "<missing>";
+        }
+
         return new ParamDef(el.Location, command,
             groupRef: group,
             kindRef: kind,
             len: len,
             klassRef: @class,
-            typeRef: ptype,
-            apiEntry: apientry,
             name: name,
             body: body
         );
+    }
+
+    private static IEnumerable<ParamBody> InsertSpace(IEnumerable<ParamBody> mems)
+    {
+        ParamBody? last = null;
+        foreach (var current in mems)
+        {
+            if (last != null)
+            {
+                if (IsBlock(last) && IsBlock(current))
+                {
+                    yield return new ParamTextMember(" ");
+                }
+            }
+
+            last = current;
+            yield return current;
+        }
+
+        static bool IsBlock(ParamBody m) => m is ParamPTypeMember or ParamNameMember;
+    }
+
+    private static IEnumerable<ParamBody> ParseParamChildren(CommandDef ownerCommand, Location root, IEnumerable<XmlNode> nodes)
+    {
+        int index = 0;
+        foreach (var n in nodes)
+        {
+            switch (n)
+            {
+                case XmlComment:
+                    continue;
+                case XmlElement xmlElement:
+                {
+                    var r = ParseParamElement(ownerCommand, xmlElement, root.Sub(xmlElement.Name, index));
+                    if (r != null) yield return r;
+                }
+                    break;
+                case XmlSignificantWhitespace sw:
+                {
+                    var r = ParamTextMember.Parse(sw.Value);
+                    if (r != null) yield return r;
+                }
+                    break;
+                case XmlText t:
+                {
+                    var r = ParamTextMember.Parse(t.Value);
+                    if (r != null) yield return r;
+                }
+                    break;
+                case XmlWhitespace ws:
+                {
+                    var r = ParamTextMember.Parse(ws.Value);
+                    if (r != null) yield return r;
+                }
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(n));
+            }
+
+            index += 1;
+        }
+    }
+
+    private static ParamBody? ParseParamElement(CommandDef ownerCommand, XmlElement elem, Location loc)
+    {
+        switch (elem.Name)
+        {
+            case "name":
+                return new ParamNameMember(elem.InnerText);
+            case "ptype":
+                return new ParamPTypeMember(loc, elem.InnerText);
+            case "apientry":
+                return new ParamApiEntryMember();
+            default:
+                return null;
+        }
     }
 
     private static GlxDef ParseGlxDef(El el)

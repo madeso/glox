@@ -157,7 +157,7 @@ internal static class Writer
                     .BuildList()
         );
 
-    private sealed class HtmlCodeGenerator : IProtoMemberVisitor
+    private sealed class HtmlCodeGenerator : IProtoMemberVisitor, ParamVisitor
     {
         public string Code { get; private set; } = "";
 
@@ -166,7 +166,17 @@ internal static class Writer
             Code += Escape(member.Value);
         }
 
+        public void VisitText(ParamTextMember text)
+        {
+            Code += Escape(text.Value);
+        }
+
         public void VisitName(ProtoNameMember name)
+        {
+            Code += MakeBold(Escape(name.Name));
+        }
+
+        public void VisitName(ParamNameMember name)
         {
             Code += MakeBold(Escape(name.Name));
         }
@@ -181,6 +191,23 @@ internal static class Writer
             {
                 Code += Escape("<invalid ptype>");
             }
+        }
+
+        public void VisitPtype(ParamPTypeMember member)
+        {
+            if (member.Type != null)
+            {
+                Code += LinkToType(member.Type);
+            }
+            else
+            {
+                Code += Escape("<invalid ptype>");
+            }
+        }
+
+        public void VisitApiEntry(ParamApiEntryMember entry)
+        {
+            Code += "API_ENTRY";
         }
     }
 
@@ -206,14 +233,12 @@ internal static class Writer
 
     private static PropsBuilder PropsForParam(ParamDef p) =>
         new PropsBuilder()
-            .Add("Name", p.Name)
+            .AddStruct(p.Body, b => InCode(p.Visit(new HtmlCodeGenerator()).Code))
             .Add("Group", p.Group, LinkToGroup)
             .Add("Kind", p.Kind, LinkToKind)
-            .Add("Len", p.Len)
             .Add("Class", p.Klass, LinkToKlass)
-            .Add("Type", p.Type, LinkToType)
-            .Add("ApiEntry", p.ApiEntry)
-            .AddArray("Body", p.Body, EscapeToCode);
+            .Add("Len", p.Len)
+        ;
 
     private static string FileForFeature(FeatureDef f) => $"feature_{f.Name}";
     private static string LinkToFeature(FeatureDef f) => MakeLink(FileForFeature(f), f.Name);
@@ -400,6 +425,12 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
         {
             _allProps.Add($"{Key(name)}: {converter(value)}");
         }
+        return this;
+    }
+
+    internal PropsBuilder AddStruct<T>(T value, Func<T, string> converter) where T : struct
+    {
+        _allProps.Add($"{converter(value)}");
         return this;
     }
 
