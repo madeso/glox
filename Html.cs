@@ -1,18 +1,12 @@
-﻿using System.Runtime.InteropServices;
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using Glox.Registry;
-using System.Xml.Linq;
 using Spectre.Console;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Runtime.CompilerServices;
-using Action = Glox.Registry.Action;
 
 namespace Glox.Html;
 
 internal record Page(string FileName, string Title, string? Caption, string Body);
 
-internal static class Writer
+internal static class HtmlWriter
 {
     internal static string Escape(string s) => System.Net.WebUtility.HtmlEncode(s);
     internal static string InCode(string s) => $"<pre><code>{s}</code></pre>";
@@ -411,8 +405,8 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
     internal string Key(string name)
         => keyStyle switch
         {
-            KeyStyle.Normal => Writer.Escape(name),
-            KeyStyle.Bold => $"<b>{Writer.Escape(name)}</b>",
+            KeyStyle.Normal => HtmlWriter.Escape(name),
+            KeyStyle.Bold => $"<b>{HtmlWriter.Escape(name)}</b>",
             _ => throw new ArgumentOutOfRangeException(nameof(keyStyle), keyStyle, null)
         };
 
@@ -420,7 +414,7 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
     {
         if (value != null)
         {
-            _allProps.Add($"{Writer.Escape(value)}");
+            _allProps.Add($"{HtmlWriter.Escape(value)}");
         }
         return this;
     }
@@ -429,7 +423,7 @@ internal class PropsBuilder(KeyStyle keyStyle = KeyStyle.Normal)
     {
         if (value != null)
         {
-            _allProps.Add($"{Key(name)}: {Writer.Escape(value)}");
+            _allProps.Add($"{Key(name)}: {HtmlWriter.Escape(value)}");
         }
         return this;
     }

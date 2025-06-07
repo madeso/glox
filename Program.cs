@@ -4,13 +4,49 @@ using Spectre.Console.Cli;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Xml;
+using Glox.Cpp;
 using Glox.Html;
 using Glox.Registry;
 
-var app = new CommandApp<MainCommand>();
+var app = new CommandApp<HtmlCommand>();
 return app.Run(args);
 
-internal sealed class MainCommand : Command<MainCommand.Settings>
+/*
+internal sealed class CppCommand : Command<CppCommand.Settings>
+{
+    public sealed class Settings : CommandSettings
+    {
+        [Description("Path to gl.xml")]
+        [CommandArgument(0, "<gl.xml>")]
+        public string OpenGlXml { get; set; } = "";
+    }
+
+    public override int Execute([NotNull] CommandContext context, [NotNull] Settings settings)
+    {
+        var x = new XmlDocument();
+        x.LoadXml(File.ReadAllText(settings.OpenGlXml));
+        const string registryElementName = "registry";
+        var reg = x[registryElementName];
+        var errors = new Errors();
+        if (reg != null)
+        {
+            var p = $"/{registryElementName}";
+            using var doc = new El(new(errors, p, p), reg);
+            var registry = Parser.Parse(doc);
+
+            CppWriter.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry, NamedApi.GL, new Version(4, 6), ProfileName.core);
+        }
+        else
+        {
+            errors.Report("/", "/", $"Missing {registryElementName}");
+        }
+        AnsiConsole.WriteLine("Program done.");
+        return errors.Return();
+    }
+}
+*/
+
+internal sealed class HtmlCommand : Command<HtmlCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
@@ -32,7 +68,8 @@ internal sealed class MainCommand : Command<MainCommand.Settings>
             using var doc = new El(new(errors, p, p), reg);
             var registry = Parser.Parse(doc);
 
-            Writer.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry);
+            CppWriter.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry, NamedApi.GL, new Version(4, 6), ProfileName.core);
+            HtmlWriter.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry);
         }
         else
         {
