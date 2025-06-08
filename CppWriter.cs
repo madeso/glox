@@ -38,12 +38,39 @@ internal static class CppWriter
 
         // todo(Gustav): collect types
         var typeFinder = new TypeFinder();
-        sel.Commands.SelectMany(c => c.Params).SelectMany(d => d.ParamBody).Visit(typeFinder);
-        sel.Commands.SelectMany(c => c.Prototype).Visit(typeFinder);
+        VisitParam(sel, typeFinder);
+        VisitPrototype(sel, typeFinder);
         var types = typeFinder.Types.OrderBy(t => t.DeclarationIndex).ToImmutableArray();
 
-        // todo(Gustav): fix command prefixes
         // todo(Gustav): group enums values into groups
+        var groupFinder = new GroupFinder();
+        VisitParam(sel, groupFinder);
+        VisitPrototype(sel, groupFinder);
+        foreach (var m in groupFinder.Groups.Select(x => new { Group = x.Key, Types = x.Value }).Where(x => x.Types.Count > 1))
+        {
+            var tooManyTypes = string.Join(", ", m.Types.Select(x => x.Name));
+            AnsiConsole.MarkupLineInterpolated($"{m.Group.Name} has many types: {tooManyTypes}");
+        }
+        var enumGroups = groupFinder.Groups.Select(x => new { Group = x.Key, Type = x.Value.FirstOrDefault(), Values = new List<EnumValue>() }).ToImmutableArray();
+        var enumGroupLookup = enumGroups.ToImmutableDictionary(x => x.Group, x => x);
+        var unusedEnums = sel.EnumValues.ToHashSet();
+        foreach (var enumVal in sel.EnumValues)
+        {
+            bool added = false;
+            foreach (var enumGroup in enumVal.Groups)
+            {
+                if (!enumGroupLookup.TryGetValue(enumGroup, out var dstGroup)) continue;
+                dstGroup.Values.Add(enumVal);
+                added = true;
+            }
+
+            if (added)
+            {
+                unusedEnums.Remove(enumVal);
+            }
+        }
+
+        // todo(Gustav): fix command prefixes
         // todo(Gustav): replace naked types with classes
         // todo(Gustav: figure out how to use kinds... replacement function/factories
         // todo(Gustav): multiple enum values?
@@ -65,10 +92,34 @@ internal static class CppWriter
         code.Header("");
         code.Header("");
 
-        code.Header("// Enum values");
-        foreach (var ev in sel.EnumValues)
+        code.Header("// Enum groups");
+        foreach (var g in enumGroups)
         {
-            code.Header($"const int {ev.Name} = {ev.Value};");
+            if(g.Type != null)
+            {
+                code.Header($"enum class {g.Group.Name} : {g.Type.Name}");
+            }
+            else
+            {
+                code.Header($"enum class {g.Group.Name}");
+            }
+            code.Header("{");
+            bool first = true;
+            foreach (var ev in g.Values)
+            {
+                var s = first ? "  " : ", ";
+                first = false;
+                code.Header($"\t{s}{ev.Name} = {ev.Value}");
+            }
+            code.Header("}");
+        }
+        code.Header("");
+        code.Header("");
+
+        code.Header("// Enum values not mapped to a group");
+        foreach (var ev in unusedEnums)
+        {
+            code.Header($"const GLenum {ev.Name} = {ev.Value};");
         }
         code.Header("");
         code.Header("");
@@ -88,6 +139,16 @@ internal static class CppWriter
         AnsiConsole.WriteLine("Writing code...");
         WritePage(folder, "gloc.cc", code.SourceLines);
         WritePage(folder, "gloc.hh", code.HeaderLines);
+    }
+
+    private static void VisitPrototype(Selection sel, IProtoVisitor typeFinder)
+    {
+        sel.Commands.SelectMany(c => c.Prototype).Visit(typeFinder);
+    }
+
+    private static void VisitParam(Selection sel, IParamVisitor typeFinder)
+    {
+        sel.Commands.SelectMany(c => c.Params).SelectMany(d => d.ParamBody).Visit(typeFinder);
     }
 
     private static void WriteTypes(SimpleWriter code, IEnumerable<TypeDef> types)
@@ -128,16 +189,79 @@ internal static class CppWriter
         }
     }
 
-    private sealed class KindFinder : IProtoVisitor
+    private sealed class KindFinder : IProtoVisitor, IParamVisitor
     {
-        private HashSet<KindDef> Kinds { get; } = new();
+        internal Dictionary<KindDef, HashSet<TypeDef>> Kinds { get; } = new();
 
         public void VisitText(ProtoText member) {}
         public void VisitName(ProtoName member) {}
         public void VisitPType(ProtoPType member)
         {
-            if (member.Kind == null) return;
-            Kinds.Add(member.Kind);
+            Add(member.Kind, member.Type);
+        }
+
+        private void Add(KindDef? kind, TypeDef? type)
+        {
+            if (kind == null) return;
+            var hs = Get(kind);
+            if (type != null)
+            {
+                hs.Add(type);
+            }
+        }
+
+        public void VisitText(ParamText text) { }
+        public void VisitName(ParamName name) { }
+        public void VisitApiEntry(ParamApiEntry entry) { }
+        public void VisitPtype(ParamPType member)
+        {
+            Add(member.Kind, member.Type);
+        }
+
+        private HashSet<TypeDef> Get(KindDef kind)
+        {
+            if (Kinds.TryGetValue(kind, out var r)) return r;
+            r = [];
+            Kinds[kind] = r;
+            return r;
+        }
+    }
+
+    private sealed class GroupFinder : IProtoVisitor, IParamVisitor
+    {
+        internal Dictionary<GroupDef, HashSet<TypeDef>> Groups { get; } = new();
+
+        public void VisitText(ProtoText member) { }
+        public void VisitName(ProtoName member) { }
+        public void VisitPType(ProtoPType member)
+        {
+            Add(member.Group, member.Type);
+        }
+
+        private void Add(GroupDef? group, TypeDef? type)
+        {
+            if (group == null) return;
+            var hs = Get(group);
+            if (type != null)
+            {
+                hs.Add(type);
+            }
+        }
+
+        public void VisitText(ParamText text) { }
+        public void VisitName(ParamName name) { }
+        public void VisitApiEntry(ParamApiEntry entry) { }
+        public void VisitPtype(ParamPType member)
+        {
+            Add(member.Group, member.Type);
+        }
+
+        private HashSet<TypeDef> Get(GroupDef group)
+        {
+            if (Groups.TryGetValue(group, out var r)) return r;
+            r = [];
+            Groups[group] = r;
+            return r;
         }
     }
 

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using System.Xml;
 using Glox.Registry;
+using Spectre.Console.Cli;
 
 namespace Glox.Registry;
 
@@ -56,8 +57,17 @@ internal sealed class ParamName(string name) : IParam
     }
 }
 
-internal sealed class ParamPType(Location loc, string? typeRef) : IParam
+internal sealed class ParamPType(CommandDef ownerCommand, Location loc, string? typeRef) : IParam
 {
+    internal string? GroupRef { get; set; } = null;
+    internal GroupDef? Group { get; private set; } = null;
+
+    internal string? KindRef { get; set; } = null;
+    public KindDef? Kind { get; private set; } = null;
+
+    internal string? KlassRef { get; set; } = null;
+    internal Klass? Klass { get; private set; } = null;
+
     public void Resolve(Registry registry, Level level)
     {
         if (level != Level.ResolveGroupAndKlassRefs) return;
@@ -72,6 +82,23 @@ internal sealed class ParamPType(Location loc, string? typeRef) : IParam
             {
                 loc.ReportError($"missing reference {typeRef}");
             }
+        }
+
+        if (GroupRef != null)
+        {
+            Group = registry.GetGroup(GroupRef);
+        }
+
+        if (KlassRef != null)
+        {
+            Klass = registry.GetKlass(KlassRef);
+            Klass.Commands.Add(ownerCommand);
+        }
+
+        if (KindRef != null)
+        {
+            Kind = registry.GetKind(KindRef);
+            Kind.Commands.Add(ownerCommand);
         }
     }
 
@@ -319,9 +346,9 @@ internal static class CodeParser
 
     // ------------------
 
-    internal static ImmutableArray<IParam> ParseParamBody(El el)
+    internal static ImmutableArray<IParam> ParseParamBody(El el, CommandDef command)
     {
-        var body = ParseXmlList(el.Location, el.ReadChildren(), ParamText.Parse, ParseParamElement)
+        var body = ParseXmlList(el.Location, el.ReadChildren(), ParamText.Parse, (x, loc) => ParseParamElement(x, loc, command))
             .InsertSpace(() => new ParamText(" "), m => m is ParamPType or ParamName)
             .ToImmutableArray();
         return body;
@@ -368,14 +395,14 @@ internal static class CodeParser
         }
     }
 
-    private static IParam? ParseParamElement(XmlElement elem, Location loc)
+    private static IParam? ParseParamElement(XmlElement elem, Location loc, CommandDef command)
     {
         switch (elem.Name)
         {
             case "name":
                 return new ParamName(elem.InnerText);
             case "ptype":
-                return new ParamPType(loc, elem.InnerText);
+                return new ParamPType(command, loc, elem.InnerText);
             case "apientry":
                 return new ParamApiEntry();
             default:
@@ -424,6 +451,21 @@ internal static class CodeExtractor
         public void VisitName(ProtoName member) {}
 
         public void VisitPType(ProtoPType member) => Ptypes.Add(member);
+    }
+
+    // -----
+    
+    public static List<ParamPType> ExtractPtypeFromParam(ImmutableArray<IParam> body) => body.Visit(new PtypeParamVisisor()).Ptypes;
+
+    private sealed class PtypeParamVisisor : IParamVisitor
+    {
+        public List<ParamPType> Ptypes { get; } = [];
+
+        public void VisitText(ParamText text) {}
+        public void VisitName(ParamName name) {}
+        public void VisitApiEntry(ParamApiEntry entry) {}
+
+        public void VisitPtype(ParamPType ptype) => Ptypes.Add(ptype);
     }
 
     // -----

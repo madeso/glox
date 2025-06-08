@@ -61,7 +61,7 @@ internal sealed class HtmlCommand : Command<HtmlCommand.Settings>
         x.LoadXml(File.ReadAllText(settings.OpenGlXml));
         const string registryElementName = "registry";
         var reg = x[registryElementName];
-        var errors = new Errors();
+        var errors = new Log();
         if(reg != null)
         {
             var p = $"/{registryElementName}";
@@ -73,26 +73,31 @@ internal sealed class HtmlCommand : Command<HtmlCommand.Settings>
         }
         else
         {
-            errors.Report("/", "/", $"Missing {registryElementName}");
+            errors.ReportError("/", "/", $"Missing {registryElementName}");
         }
         AnsiConsole.WriteLine("Program done.");
         return errors.Return();
     }
 }
 
-internal class Location(Errors errors, string path, string genericPath)
+internal class Location(Log log, string path, string genericPath)
 {
     public void ReportError(string message, string? note = null)
     {
-        errors.Report(path, genericPath, message, note);
+        log.ReportError(path, genericPath, message, note);
     }
 
     public Location Sub(string name, int index)
     {
-        return new Location(errors,
+        return new Location(log,
             path: $"{path}/{name}[{index}]",
             genericPath: $"{genericPath}/{name}"
             );
+    }
+
+    public void ReportWarning(string message, string? note = null)
+    {
+        log.ReportWarning(path, genericPath, message, note);
     }
 }
 
@@ -183,12 +188,13 @@ internal class El : IDisposable
     }
 }
 
-internal class Errors
+internal class Log
 {
     private readonly HashSet<string> _reported = new();
     private int _errorCount = 0;
+    private int _warrningCount = 0;
 
-    public void Report(string path, string generic, string message, string? note = null)
+    public void ReportError(string path, string generic, string message, string? note = null)
     {
         var gm = $"{generic}/{message}";
         _errorCount++;
@@ -204,9 +210,21 @@ internal class Errors
 
     public int Return()
     {
-        AnsiConsole.MarkupLineInterpolated($"Detected [red]{_errorCount}[/] errors");
+        AnsiConsole.MarkupLineInterpolated($"Detected [red]{_errorCount}[/] errors and [red]{_warrningCount}[/] warnings");
 
         if (_errorCount == 0) return 0;
         else return -_errorCount;
+    }
+
+    public void ReportWarning(string path, string generic, string message, string? note = null)
+    {
+        var gm = $"{generic}/{message}";
+        _warrningCount++;
+
+        AnsiConsole.MarkupLineInterpolated($"[red]WARNING[/]: [blue]{path}[/]: {message}");
+        if (note != null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]note[/]: {note}");
+        }
     }
 }

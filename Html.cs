@@ -243,9 +243,9 @@ internal static class HtmlWriter
     private static PropsBuilder PropsForParam(ParamDef p) =>
         new PropsBuilder()
             .AddStruct(p.ParamBody, b => InCode(p.Visit(new HtmlCodeGenerator()).Code))
-            .Add("Group", p.Group, LinkToGroup)
-            .Add("Kind", p.Kind, LinkToKind)
-            .Add("Class", p.Klass, LinkToKlass)
+            .Add("Group", p.Ptype?.Group, LinkToGroup)
+            .Add("Kind", p.Ptype?.Kind, LinkToKind)
+            .Add("Class", p.Ptype?.Klass, LinkToKlass)
             .Add("Len", p.Len)
         ;
 

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.Formats.Tar;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -267,48 +268,21 @@ internal sealed class CommandDef(ImmutableArray<ParamDef> @params, string? alias
 }
 
 
-internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string name, ImmutableArray<IParam> paramBody)
+internal sealed class ParamDef(string? len, string name, ParamPType? ptype, ImmutableArray<IParam> paramBody)
 {
-    private readonly Location _location = location;
-
-    internal string? GroupRef { get; } = groupRef;
-    internal GroupDef? Group { get; private set; } = null;
-
-    internal string? KindRef { get; } = kindRef;
-    public KindDef? Kind { get; private set; } = null;
-
     internal string? Len { get; } = len;
-    
-    internal string? KlassRef { get; } = klassRef;
-    internal Klass? Klass { get; private set; } = null;
 
     internal string Name { get; } = name;
     
     internal ImmutableArray<IParam> ParamBody { get; } = paramBody;
+
+    internal ParamPType? Ptype { get; } = ptype;
 
     internal void Resolve(Registry registry, Level level)
     {
         foreach (var b in ParamBody)
         {
             b.Resolve(registry, level);
-        }
-        if (level != Level.ResolveGroupAndKlassRefs) return;
-
-        if (GroupRef != null)
-        {
-            Group = registry.GetGroup(GroupRef);
-        }
-
-        if (KlassRef != null)
-        {
-            Klass = registry.GetKlass(KlassRef);
-            Klass.Commands.Add(ownerCommand);
-        }
-
-        if (KindRef != null)
-        {
-            Kind = registry.GetKind(KindRef);
-            Kind.Commands.Add(ownerCommand);
         }
     }
 
@@ -732,12 +706,12 @@ internal static class Parser
 
     private static ParamDef ParseParamDef(El el, CommandDef command)
     {
-        var group = el.ReadAttribute("group");
-        var kind = el.ReadAttribute("kind");
+        var groupRef = el.ReadAttribute("group");
+        var kindRef = el.ReadAttribute("kind");
         var len = el.ReadAttribute("len");
-        var @class = el.ReadAttribute("class");
+        var klassRef = el.ReadAttribute("class");
 
-        var body = CodeParser.ParseParamBody(el);
+        var body = CodeParser.ParseParamBody(el, command);
 
         var name = CodeExtractor.ExtractNameFromParam(body);
         if (name == null)
@@ -746,14 +720,87 @@ internal static class Parser
             name = "<missing>";
         }
 
-        return new ParamDef(el.Location, command,
-            groupRef: group,
-            kindRef: kind,
-            len: len,
-            klassRef: @class,
+        var ptype = CodeExtractor.ExtractPtypeFromParam(body).FirstOrDefault();
+        if (klassRef != null || groupRef != null || kindRef != null)
+        {
+            if (ptype == null)
+            {
+                AnsiConsole.WriteLine("Missing ptype in param, trying to alter void with GLVoid");
+                body = AddVoidToBody(body, command, el.Location).ToImmutableArray();
+                ptype = CodeExtractor.ExtractPtypeFromParam(body).FirstOrDefault();
+            }
+
+            if (ptype == null)
+            {
+                var tb = body.Visit(new TextRenderer()).Text;
+                el.Location.ReportWarning("Has kind or class but no ptype", $"{tb} - {klassRef} {groupRef} {kindRef}");
+            }
+            else
+            {
+                ptype.KindRef = kindRef;
+                ptype.KlassRef = klassRef;
+                ptype.GroupRef = groupRef;
+            }
+        }
+
+
+        return new ParamDef(len: len,
             name: name,
+            ptype: ptype,
             paramBody: body
         );
+    }
+
+    private static IEnumerable<IParam> AddVoidToBody(IEnumerable<IParam> src, CommandDef command, Location location)
+    {
+        foreach (var p in src)
+        {
+            var text = p as ParamText;
+            if (text == null)
+            {
+                yield return p;
+                continue;
+            }
+
+            var found = text.Value.IndexOf("void", StringComparison.Ordinal);
+            if (found == -1)
+            {
+                yield return text;
+                continue;
+            }
+
+            var before = text.Value.Substring(0, found);
+            var after = text.Value.Substring(found + "void".Length);
+
+            if (!string.IsNullOrEmpty(before)) yield return new ParamText(before);
+            yield return new ParamPType(command, location, "GLvoid");
+            if (!string.IsNullOrEmpty(after)) yield return new ParamText(after);
+        }
+    }
+
+    private sealed class TextRenderer : IParamVisitor
+    {
+        public string Text { get; private set; } = "";
+
+        public void VisitText(ParamText text)
+        {
+            Text += $"(text {text.Value})";
+        }
+
+        public void VisitName(ParamName name)
+        {
+            Text += $"(name {name.Name})";
+        }
+
+        public void VisitPtype(ParamPType ptype)
+        {
+            Text += $"(ptype {ptype.Type?.Name})";
+        }
+
+        public void VisitApiEntry(ParamApiEntry entry)
+        {
+            Text += "(API_ENTRY)";
+        }
     }
 
     private static GlxDef ParseGlxDef(El el)
