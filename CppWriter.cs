@@ -1,4 +1,5 @@
-﻿using Glox.Registry;
+﻿using System.Collections.Immutable;
+using Glox.Registry;
 using Spectre.Console;
 
 namespace Glox.Cpp;
@@ -36,6 +37,11 @@ internal static class CppWriter
         }
 
         // todo(Gustav): collect types
+        var typeFinder = new TypeFinder();
+        sel.Commands.SelectMany(c => c.Params).SelectMany(d => d.ParamBody).Visit(typeFinder);
+        sel.Commands.SelectMany(c => c.Prototype).Visit(typeFinder);
+        var types = typeFinder.Types.OrderByDescending(x => x.Requires).ThenBy(x => x.Name).ToImmutableArray();
+
         // todo(Gustav): fix command prefixes
         // todo(Gustav): group enums values into groups
         // todo(Gustav): replace naked types with classes
@@ -52,6 +58,14 @@ internal static class CppWriter
         code.Add("namespace gl");
         code.Add("{");
 
+        code.Header("// Types");
+        foreach (var t in types)
+        {
+            code.Header(t.CodeBlock.Visit(new TypeRenderer()).Code);
+        }
+        code.Header("");
+        code.Header("");
+
         code.Header("// Enum values");
         foreach (var ev in sel.EnumValues)
         {
@@ -64,7 +78,7 @@ internal static class CppWriter
         foreach (var cmd in sel.Commands)
         {
             var rv = cmd.Prototype.Visit(new ReturnValueRenderer()).Code;
-            var pms = cmd.Params.Select(c => c.Body.Visit(new ParamRenderer()).Code);
+            var pms = cmd.Params.Select(c => c.ParamBody.Visit(new ParamRenderer()).Code);
             var pb = string.Join(", ", pms);
             code.Header($"{rv}({pb});");
         }
@@ -75,6 +89,49 @@ internal static class CppWriter
         AnsiConsole.WriteLine("Writing code...");
         WritePage(folder, "gloc.cc", code.SourceLines);
         WritePage(folder, "gloc.hh", code.HeaderLines);
+    }
+
+    private sealed class TypeFinder : IProtoVisitor, IParamVisitor
+    {
+        public HashSet<TypeDef> Types { get; } = new();
+
+        public void VisitText(ProtoText member) { }
+        public void VisitName(ProtoName member) { }
+        public void VisitPType(ProtoPType member)
+        {
+            Add(member.Type);
+        }
+
+        public void VisitText(ParamText text) {}
+        public void VisitName(ParamName name) {}
+        public void VisitApiEntry(ParamApiEntry entry) { }
+        public void VisitPtype(ParamPType member)
+        {
+            Add(member.Type);
+        }
+
+        private void Add(TypeDef? type)
+        {
+            while (true)
+            {
+                if (type == null) return;
+                Types.Add(type);
+                type = type.Requires;
+            }
+        }
+    }
+
+    private sealed class KindFinder : IProtoVisitor
+    {
+        private HashSet<KindDef> Kinds { get; } = new();
+
+        public void VisitText(ProtoText member) {}
+        public void VisitName(ProtoName member) {}
+        public void VisitPType(ProtoPType member)
+        {
+            if (member.Kind == null) return;
+            Kinds.Add(member.Kind);
+        }
     }
 
     private sealed class ReturnValueRenderer : IProtoVisitor
@@ -97,7 +154,7 @@ internal static class CppWriter
         public string Code { get; private set; } = "";
     }
 
-    private class ParamRenderer : IParamVisitor
+    private sealed class ParamRenderer : IParamVisitor
     {
         public void VisitText(ParamText text)
         {
@@ -119,6 +176,24 @@ internal static class CppWriter
         }
 
         public string Code { get; private set; } = "";
+    }
+
+    private sealed class TypeRenderer : ITypeCodeVisitor
+    {
+        public string Code { get; private set; } = "";
+        public void VisitText(TypeCodeText text)
+        {
+            Code += text.Value;
+        }
+
+        public void VisitApiEntry(TypeCodeApiEntry apiEntry)
+        {
+        }
+
+        public void VisitName(TypeCodeName name)
+        {
+            Code += name.Name;
+        }
     }
 
     private static bool Include(ProfileName? profile, InterfaceDef add)

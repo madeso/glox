@@ -242,7 +242,7 @@ internal static class HtmlWriter
 
     private static PropsBuilder PropsForParam(ParamDef p) =>
         new PropsBuilder()
-            .AddStruct(p.Body, b => InCode(p.Visit(new HtmlCodeGenerator()).Code))
+            .AddStruct(p.ParamBody, b => InCode(p.Visit(new HtmlCodeGenerator()).Code))
             .Add("Group", p.Group, LinkToGroup)
             .Add("Kind", p.Kind, LinkToKind)
             .Add("Class", p.Klass, LinkToKlass)

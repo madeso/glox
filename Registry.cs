@@ -265,7 +265,7 @@ internal sealed class CommandDef(ImmutableArray<ParamDef> @params, string? alias
 }
 
 
-internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string name, ImmutableArray<IParam> body)
+internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string name, ImmutableArray<IParam> paramBody)
 {
     private readonly Location _location = location;
 
@@ -282,11 +282,11 @@ internal sealed class ParamDef(Location location, CommandDef ownerCommand, strin
 
     internal string Name { get; } = name;
     
-    internal ImmutableArray<IParam> Body { get; } = body;
+    internal ImmutableArray<IParam> ParamBody { get; } = paramBody;
 
     internal void Resolve(Registry registry, Level level)
     {
-        foreach (var b in Body)
+        foreach (var b in ParamBody)
         {
             b.Resolve(registry, level);
         }
@@ -312,7 +312,7 @@ internal sealed class ParamDef(Location location, CommandDef ownerCommand, strin
 
     public T Visit<T>(T visitor) where T: IParamVisitor
     {
-        foreach (var b in Body)
+        foreach (var b in ParamBody)
         {
             b.Visit(visitor);
         }
@@ -747,7 +747,7 @@ internal static class Parser
             len: len,
             klassRef: @class,
             name: name,
-            body: body
+            paramBody: body
         );
     }
 
