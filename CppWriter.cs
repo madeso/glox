@@ -12,7 +12,7 @@ internal static class CppWriter
         File.WriteAllLines(path, lines);
     }
 
-    internal static void Write(DirectoryInfo folder, Registry.Registry registry, NamedApi api, Version version, ProfileName? profile)
+    internal static void Write(DirectoryInfo folder, Registry.Registry registry, NamedApi api, Version version, ProfileName? profile, ImmutableHashSet<string> ignoreEnumPrefixes)
     {
         AnsiConsole.WriteLine("Generating code...");
         var features = registry.Features.Where(x => x.Api == api && x.Number <= version).OrderBy(x => x.Number);
@@ -105,11 +105,23 @@ internal static class CppWriter
             }
             code.Header("{");
             bool first = true;
+            var prefix = g.Values.Select(e => e.Name).Where(name => ignoreEnumPrefixes.Contains(name) == false).GetCommonPrefix();
+            if (prefix.Length > 0 && prefix.EndsWith("_") == false)
+            {
+                // prefix must end with _
+                prefix += "_";
+            }
             foreach (var ev in g.Values)
             {
                 var s = first ? "  " : ", ";
                 first = false;
-                code.Header($"\t{s}{ev.Name} = {ev.Value}");
+                var name = RemovePrefixes(ev.Name, prefix, "GL_");
+                bool startsWithNumber = name.Length > 0 && char.IsDigit(name[0]);
+                if (startsWithNumber)
+                {
+                    name = "n" + name;
+                }
+                code.Header($"\t{s}{name} = {ev.Value}");
             }
             code.Header("}");
         }
@@ -127,7 +139,7 @@ internal static class CppWriter
         code.Header("// Commands");
         foreach (var cmd in sel.Commands)
         {
-            var rv = cmd.Prototype.Visit(new ReturnValueRenderer()).Code;
+            var rv = cmd.Prototype.Visit(new ReturnValueRenderer(RemovePrefixes(cmd.Name, "gl"))).Code;
             var pms = cmd.Params.Select(c => c.ParamBody.Visit(new ParamRenderer()).Code);
             var pb = string.Join(", ", pms);
             code.Header($"{rv}({pb});");
@@ -139,6 +151,23 @@ internal static class CppWriter
         AnsiConsole.WriteLine("Writing code...");
         WritePage(folder, "gloc.cc", code.SourceLines);
         WritePage(folder, "gloc.hh", code.HeaderLines);
+    }
+
+    private static string RemovePrefixes(string s, params string[] prefixes)
+    {
+        var t = s;
+
+        foreach (var pre in prefixes)
+        {
+            if (t.StartsWith(pre))
+            {
+                var next = t.Substring(pre.Length);
+                if (string.IsNullOrEmpty(next)) continue;
+                t = next;
+            }
+        }
+
+        return t;
     }
 
     private static void VisitPrototype(Selection sel, IProtoVisitor typeFinder)
@@ -265,7 +294,7 @@ internal static class CppWriter
         }
     }
 
-    private sealed class ReturnValueRenderer : IProtoVisitor
+    private sealed class ReturnValueRenderer(string newName) : IProtoVisitor
     {
         public void VisitText(ProtoText member)
         {
@@ -274,7 +303,7 @@ internal static class CppWriter
 
         public void VisitName(ProtoName member)
         {
-            Code += member.Name;
+            Code += newName;
         }
 
         public void VisitPType(ProtoPType member)
@@ -330,6 +359,27 @@ internal static class CppWriter
     private static bool Include(ProfileName? profile, InterfaceDef add)
     {
         return add.Profile == null || add.Profile == profile;
+    }
+}
+
+internal static class Extensions
+{
+    public static string GetCommonPrefix(this IEnumerable<string> strings)
+    {
+        var list = strings.ToList();
+        if (list.Count == 0) return "";
+        if (list.Count == 1) return "";
+
+        string prefix = list[0];
+        foreach (var s in list.Skip(1))
+        {
+            int i = 0;
+            int max = Math.Min(prefix.Length, s.Length);
+            while (i < max && prefix[i] == s[i]) i++;
+            prefix = prefix.Substring(0, i);
+            if (prefix == "") break;
+        }
+        return prefix;
     }
 }
 

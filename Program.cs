@@ -68,7 +68,7 @@ internal sealed class HtmlCommand : Command<HtmlCommand.Settings>
             using var doc = new El(new(errors, p, p), reg);
             var registry = Parser.Parse(doc);
 
-            CppWriter.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry, NamedApi.GL, new Version(4, 6), ProfileName.core);
+            CppWriter.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry, NamedApi.GL, new Version(4, 6), ProfileName.core, ["GL_DONT_CARE"]);
             HtmlWriter.Write(new DirectoryInfo(Directory.GetCurrentDirectory()), registry);
         }
         else
