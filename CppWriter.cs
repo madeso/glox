@@ -77,19 +77,19 @@ internal static class CppWriter
         WritePage(folder, "gloc.hh", code.HeaderLines);
     }
 
-    private sealed class ReturnValueRenderer : IProtoMemberVisitor
+    private sealed class ReturnValueRenderer : IProtoVisitor
     {
-        public void VisitText(ProtoTextMember member)
+        public void VisitText(ProtoText member)
         {
             Code += member.Value;
         }
 
-        public void VisitName(ProtoNameMember member)
+        public void VisitName(ProtoName member)
         {
             Code += member.Name;
         }
 
-        public void VisitPType(ProtoPTypeMember member)
+        public void VisitPType(ProtoPType member)
         {
             Code += member.Type?.Name;
         }
@@ -97,24 +97,24 @@ internal static class CppWriter
         public string Code { get; private set; } = "";
     }
 
-    private class ParamRenderer : ParamVisitor
+    private class ParamRenderer : IParamVisitor
     {
-        public void VisitText(ParamTextMember text)
+        public void VisitText(ParamText text)
         {
             Code += text.Value;
         }
 
-        public void VisitName(ParamNameMember name)
+        public void VisitName(ParamName name)
         {
             Code += name.Name;
         }
 
-        public void VisitPtype(ParamPTypeMember ptype)
+        public void VisitPtype(ParamPType ptype)
         {
             Code += ptype.Type?.Name;
         }
 
-        public void VisitApiEntry(ParamApiEntryMember entry)
+        public void VisitApiEntry(ParamApiEntry entry)
         {
         }
 

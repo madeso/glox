@@ -9,40 +9,40 @@ namespace Glox.Registry;
 
 
 
-interface ParamVisitor
+interface IParamVisitor
 {
-    void VisitText(ParamTextMember text);
-    void VisitName(ParamNameMember name);
-    void VisitPtype(ParamPTypeMember ptype);
-    void VisitApiEntry(ParamApiEntryMember entry);
+    void VisitText(ParamText text);
+    void VisitName(ParamName name);
+    void VisitPtype(ParamPType ptype);
+    void VisitApiEntry(ParamApiEntry entry);
 }
 
-interface ParamBody
+interface IParam
 {
     void Resolve(Registry registry, Level level);
-    void Visit(ParamVisitor visitor);
+    void Visit(IParamVisitor visitor);
 }
 
-internal sealed class ParamTextMember(string value) : ParamBody
+internal sealed class ParamText(string value) : IParam
 {
     public string Value { get; } = value;
-    public static ParamBody? Parse(string? s)
+    public static IParam? Parse(string? s)
     {
         if (string.IsNullOrEmpty(s)) return null;
-        return new ParamTextMember(s);
+        return new ParamText(s);
     }
 
     public void Resolve(Registry registry, Level level)
     {
     }
 
-    public void Visit(ParamVisitor visitor)
+    public void Visit(IParamVisitor visitor)
     {
         visitor.VisitText(this);
     }
 }
 
-internal sealed class ParamNameMember(string name) : ParamBody
+internal sealed class ParamName(string name) : IParam
 {
     public string Name { get; } = name;
 
@@ -50,13 +50,13 @@ internal sealed class ParamNameMember(string name) : ParamBody
     {
     }
 
-    public void Visit(ParamVisitor visitor)
+    public void Visit(IParamVisitor visitor)
     {
         visitor.VisitName(this);
     }
 }
 
-internal sealed class ParamPTypeMember(Location loc, string? typeRef) : ParamBody
+internal sealed class ParamPType(Location loc, string? typeRef) : IParam
 {
     public void Resolve(Registry registry, Level level)
     {
@@ -75,7 +75,7 @@ internal sealed class ParamPTypeMember(Location loc, string? typeRef) : ParamBod
         }
     }
 
-    public void Visit(ParamVisitor visitor)
+    public void Visit(IParamVisitor visitor)
     {
         visitor.VisitPtype(this);
     }
@@ -83,13 +83,13 @@ internal sealed class ParamPTypeMember(Location loc, string? typeRef) : ParamBod
     public TypeDef? Type { get; set; } = null;
 }
 
-internal sealed class ParamApiEntryMember : ParamBody
+internal sealed class ParamApiEntry : IParam
 {
     public void Resolve(Registry registry, Level level)
     {
     }
 
-    public void Visit(ParamVisitor visitor)
+    public void Visit(IParamVisitor visitor)
     {
         visitor.VisitApiEntry(this);
     }
@@ -97,82 +97,51 @@ internal sealed class ParamApiEntryMember : ParamBody
 
 // =============================================================================================================================================
 
+interface IProtoVisitor
+{
+    void VisitText(ProtoText member);
+    void VisitName(ProtoName member);
+    void VisitPType(ProtoPType member);
+}
 
-interface IProtoMember
+interface IProto
 {
     void Resolve(Registry registry, Level level);
-    void Visit(IProtoMemberVisitor vis);
+    void Visit(IProtoVisitor vis);
 }
 
-internal static class IProtoMemberUtils
-{
-    public static T Visit<T>(this IEnumerable<IProtoMember> member, T visitor) where T : IProtoMemberVisitor
-    {
-        foreach (var m in member)
-        {
-            m.Visit(visitor);
-        }
-        return visitor;
-    }
-
-    public static T Visit<T>(this IEnumerable<ParamBody> member, T visitor) where T : ParamVisitor
-    {
-        foreach (var m in member)
-        {
-            m.Visit(visitor);
-        }
-        return visitor;
-    }
-
-    public static T Visit<T>(this IEnumerable<ITypeCode> member, T visitor) where T : ITypeCodeVisitor
-    {
-        foreach (var m in member)
-        {
-            m.Visit(visitor);
-        }
-        return visitor;
-    }
-}
-
-interface IProtoMemberVisitor
-{
-    void VisitText(ProtoTextMember member);
-    void VisitName(ProtoNameMember member);
-    void VisitPType(ProtoPTypeMember member);
-}
-
-internal sealed class ProtoTextMember(string value) : IProtoMember
+internal sealed class ProtoText(string value) : IProto
 {
     public string Value { get; } = value;
-    public static ProtoTextMember? Parse(string? s)
+    public static ProtoText? Parse(string? s)
     {
         if (string.IsNullOrEmpty(s)) return null;
-        return new ProtoTextMember(s);
+        return new ProtoText(s);
     }
     public void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
     }
-    public void Visit(IProtoMemberVisitor vis)
+    public void Visit(IProtoVisitor vis)
     {
         vis.VisitText(this);
     }
 }
 
-internal sealed class ProtoNameMember(string name) : IProtoMember
+internal sealed class ProtoName(string name) : IProto
 {
     public string Name { get; } = name;
     public void Resolve(Registry registry, Level level)
     {
         // Nothing to resolve
     }
-    public void Visit(IProtoMemberVisitor vis)
+    public void Visit(IProtoVisitor vis)
     {
         vis.VisitName(this);
     }
 }
 
-internal sealed class ProtoPTypeMember(CommandDef ownerCommand, Location location, string typeRef) : IProtoMember
+internal sealed class ProtoPType(CommandDef ownerCommand, Location location, string typeRef) : IProto
 {
     public TypeDef? Type { get; private set; } = null;
 
@@ -216,7 +185,7 @@ internal sealed class ProtoPTypeMember(CommandDef ownerCommand, Location locatio
         }
     }
 
-    public void Visit(IProtoMemberVisitor vis)
+    public void Visit(IProtoVisitor vis)
     {
         vis.VisitPType(this);
     }
@@ -275,8 +244,37 @@ internal sealed class TypeCodeApiEntry : ITypeCode
 
 // ===================================
 
-internal static class Utils
+
+
+internal static class ParseExtensions
 {
+    public static T Visit<T>(this IEnumerable<IProto> member, T visitor) where T : IProtoVisitor
+    {
+        foreach (var m in member)
+        {
+            m.Visit(visitor);
+        }
+        return visitor;
+    }
+
+    public static T Visit<T>(this IEnumerable<IParam> member, T visitor) where T : IParamVisitor
+    {
+        foreach (var m in member)
+        {
+            m.Visit(visitor);
+        }
+        return visitor;
+    }
+
+    public static T Visit<T>(this IEnumerable<ITypeCode> member, T visitor) where T : ITypeCodeVisitor
+    {
+        foreach (var m in member)
+        {
+            m.Visit(visitor);
+        }
+        return visitor;
+    }
+
     public static IEnumerable<T> InsertSpace<T>(this IEnumerable<T> mems, Func<T> makeSpace, Func<T, bool> isBlock) where T : class
     {
         T? last = null;
@@ -321,10 +319,10 @@ internal static class CodeParser
 
     // ------------------
 
-    internal static ImmutableArray<ParamBody> ParseParamBody(El el)
+    internal static ImmutableArray<IParam> ParseParamBody(El el)
     {
-        var body = ParseXmlList(el.Location, el.ReadChildren(), ParamTextMember.Parse, ParseParamElement)
-            .InsertSpace(() => new ParamTextMember(" "), m => m is ParamPTypeMember or ParamNameMember)
+        var body = ParseXmlList(el.Location, el.ReadChildren(), ParamText.Parse, ParseParamElement)
+            .InsertSpace(() => new ParamText(" "), m => m is ParamPType or ParamName)
             .ToImmutableArray();
         return body;
     }
@@ -370,16 +368,16 @@ internal static class CodeParser
         }
     }
 
-    private static ParamBody? ParseParamElement(XmlElement elem, Location loc)
+    private static IParam? ParseParamElement(XmlElement elem, Location loc)
     {
         switch (elem.Name)
         {
             case "name":
-                return new ParamNameMember(elem.InnerText);
+                return new ParamName(elem.InnerText);
             case "ptype":
-                return new ParamPTypeMember(loc, elem.InnerText);
+                return new ParamPType(loc, elem.InnerText);
             case "apientry":
-                return new ParamApiEntryMember();
+                return new ParamApiEntry();
             default:
                 return null;
         }
@@ -387,24 +385,24 @@ internal static class CodeParser
 
     // --------------------
 
-    internal static ImmutableArray<IProtoMember> ParseCommandBody(El protoEl, CommandDef command)
+    internal static ImmutableArray<IProto> ParseCommandBody(El protoEl, CommandDef command)
     {
-        var body = ParseXmlList(protoEl.Location, protoEl.ReadChildren(), ProtoTextMember.Parse, (elem, loc) => ParseProtoElement(command, elem, loc))
-            .InsertSpace(() => new ProtoTextMember(" "), m => m is ProtoPTypeMember or ProtoNameMember)
+        var body = ParseXmlList(protoEl.Location, protoEl.ReadChildren(), ProtoText.Parse, (elem, loc) => ParseProtoElement(command, elem, loc))
+            .InsertSpace(() => new ProtoText(" "), m => m is ProtoPType or ProtoName)
             .ToImmutableArray();
         return body;
     }
 
-    private static IProtoMember? ParseProtoElement(CommandDef ownerCommand, XmlElement elem, Location loc)
+    private static IProto? ParseProtoElement(CommandDef ownerCommand, XmlElement elem, Location loc)
     {
         switch (elem.Name)
         {
             case "name":
                 // <name> tag: function/type/param name
-                return new ProtoNameMember(elem.InnerText);
+                return new ProtoName(elem.InnerText);
             case "ptype":
                 // <ptype> tag: type name
-                return new ProtoPTypeMember(ownerCommand, loc, elem.InnerText);
+                return new ProtoPType(ownerCommand, loc, elem.InnerText);
             default:
                 return null;
         }
@@ -416,37 +414,37 @@ internal static class CodeParser
 
 internal static class CodeExtractor
 {
-    internal static List<ProtoPTypeMember> ExtractPtypes(ImmutableArray<IProtoMember> body) => body.Visit(new PtypeVistor()).Ptypes;
+    internal static List<ProtoPType> ExtractPtypes(ImmutableArray<IProto> body) => body.Visit(new PtypeVistor()).Ptypes;
 
-    private sealed class PtypeVistor : IProtoMemberVisitor
+    private sealed class PtypeVistor : IProtoVisitor
     {
-        public List<ProtoPTypeMember> Ptypes { get; } = [];
+        public List<ProtoPType> Ptypes { get; } = [];
 
-        public void VisitText(ProtoTextMember member) {}
-        public void VisitName(ProtoNameMember member) {}
+        public void VisitText(ProtoText member) {}
+        public void VisitName(ProtoName member) {}
 
-        public void VisitPType(ProtoPTypeMember member) => Ptypes.Add(member);
+        public void VisitPType(ProtoPType member) => Ptypes.Add(member);
     }
 
     // -----
 
-    internal static string? ExtractNameFromParam(ImmutableArray<ParamBody> body) => body.Visit(new NameVisitor()).Names.FirstOrDefault();
-    internal static string? ExtractNameFromCommandBlock(ImmutableArray<IProtoMember> body) => body.Visit(new NameVisitor()).Names.FirstOrDefault();
+    internal static string? ExtractNameFromParam(ImmutableArray<IParam> body) => body.Visit(new NameVisitor()).Names.FirstOrDefault();
+    internal static string? ExtractNameFromCommandBlock(ImmutableArray<IProto> body) => body.Visit(new NameVisitor()).Names.FirstOrDefault();
     internal static string? ExtractNameFromTypeBlock(ImmutableArray<ITypeCode> body) => body.Visit(new NameVisitor()).Names.FirstOrDefault();
 
 
-    private sealed class NameVisitor : IProtoMemberVisitor, ParamVisitor, ITypeCodeVisitor
+    private sealed class NameVisitor : IProtoVisitor, IParamVisitor, ITypeCodeVisitor
     {
         public List<string> Names { get; } = [];
 
-        public void VisitName(ProtoNameMember member) => Names.Add(member.Name);
-        public void VisitText(ProtoTextMember member) {}
-        public void VisitPType(ProtoPTypeMember member) {}
+        public void VisitName(ProtoName member) => Names.Add(member.Name);
+        public void VisitText(ProtoText member) {}
+        public void VisitPType(ProtoPType member) {}
 
-        public void VisitName(ParamNameMember name) => Names.Add(name.Name);
-        public void VisitText(ParamTextMember text) {}
-        public void VisitPtype(ParamPTypeMember ptype) {}
-        public void VisitApiEntry(ParamApiEntryMember entry) {}
+        public void VisitName(ParamName name) => Names.Add(name.Name);
+        public void VisitText(ParamText text) {}
+        public void VisitPtype(ParamPType ptype) {}
+        public void VisitApiEntry(ParamApiEntry entry) {}
 
         public void VisitName(TypeCodeName name) => Names.Add(name.Name);
         public void VisitText(TypeCodeText text) {}

@@ -151,31 +151,31 @@ internal static class HtmlWriter
                     .BuildList()
         );
 
-    private sealed class HtmlCodeGenerator : IProtoMemberVisitor, ParamVisitor, ITypeCodeVisitor
+    private sealed class HtmlCodeGenerator : IProtoVisitor, IParamVisitor, ITypeCodeVisitor
     {
         public string Code { get; private set; } = "";
 
-        public void VisitText(ProtoTextMember member)
+        public void VisitText(ProtoText member)
         {
             Code += Escape(member.Value);
         }
 
-        public void VisitText(ParamTextMember text)
+        public void VisitText(ParamText text)
         {
             Code += Escape(text.Value);
         }
 
-        public void VisitName(ProtoNameMember name)
+        public void VisitName(ProtoName name)
         {
             Code += MakeBold(Escape(name.Name));
         }
 
-        public void VisitName(ParamNameMember name)
+        public void VisitName(ParamName name)
         {
             Code += MakeBold(Escape(name.Name));
         }
 
-        public void VisitPType(ProtoPTypeMember member)
+        public void VisitPType(ProtoPType member)
         {
             if(member.Type != null)
             {
@@ -187,7 +187,7 @@ internal static class HtmlWriter
             }
         }
 
-        public void VisitPtype(ParamPTypeMember member)
+        public void VisitPtype(ParamPType member)
         {
             if (member.Type != null)
             {
@@ -199,7 +199,7 @@ internal static class HtmlWriter
             }
         }
 
-        public void VisitApiEntry(ParamApiEntryMember entry)
+        public void VisitApiEntry(ParamApiEntry entry)
         {
             Code += "API_ENTRY";
         }

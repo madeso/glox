@@ -236,9 +236,9 @@ internal sealed class CommandDef(ImmutableArray<ParamDef> @params, string? alias
 {
     internal string Name { get; set; } = "<missing>";
 
-    internal ProtoPTypeMember? ReturnValue { get; set; } = null;
+    internal ProtoPType? ReturnValue { get; set; } = null;
 
-    internal ImmutableArray<IProtoMember> Prototype { get; set;  } = [];
+    internal ImmutableArray<IProto> Prototype { get; set;  } = [];
 
     internal ImmutableArray<ParamDef> Params { get; set; } = @params;
     internal string? Alias { get; } = alias;
@@ -265,7 +265,7 @@ internal sealed class CommandDef(ImmutableArray<ParamDef> @params, string? alias
 }
 
 
-internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string name, ImmutableArray<ParamBody> body)
+internal sealed class ParamDef(Location location, CommandDef ownerCommand, string? groupRef, string? kindRef, string? len, string? klassRef, string name, ImmutableArray<IParam> body)
 {
     private readonly Location _location = location;
 
@@ -282,7 +282,7 @@ internal sealed class ParamDef(Location location, CommandDef ownerCommand, strin
 
     internal string Name { get; } = name;
     
-    internal ImmutableArray<ParamBody> Body { get; } = body;
+    internal ImmutableArray<IParam> Body { get; } = body;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -310,7 +310,7 @@ internal sealed class ParamDef(Location location, CommandDef ownerCommand, strin
         }
     }
 
-    public T Visit<T>(T visitor) where T: ParamVisitor
+    public T Visit<T>(T visitor) where T: IParamVisitor
     {
         foreach (var b in Body)
         {
