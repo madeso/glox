@@ -121,7 +121,7 @@ internal static class CppWriter
                 {
                     name = "n" + name;
                 }
-                code.Header($"\t{s}{name} = {ev.Value}");
+                code.Header($"\t{s}{name} = {ev.Value} //< Original name was {ev.Name}");
             }
             code.Header("}");
         }
@@ -194,9 +194,9 @@ internal static class CppWriter
 
         public void VisitText(ProtoText member) { }
         public void VisitName(ProtoName member) { }
-        public void VisitPType(ProtoPType member)
+        public void VisitPType(ProtoPType ptype)
         {
-            Add(member.Type);
+            Add(ptype.Type);
         }
 
         public void VisitText(ParamText text) {}
@@ -224,9 +224,9 @@ internal static class CppWriter
 
         public void VisitText(ProtoText member) {}
         public void VisitName(ProtoName member) {}
-        public void VisitPType(ProtoPType member)
+        public void VisitPType(ProtoPType ptype)
         {
-            Add(member.Kind, member.Type);
+            Add(ptype.Kind, ptype.Type);
         }
 
         private void Add(KindDef? kind, TypeDef? type)
@@ -262,9 +262,9 @@ internal static class CppWriter
 
         public void VisitText(ProtoText member) { }
         public void VisitName(ProtoName member) { }
-        public void VisitPType(ProtoPType member)
+        public void VisitPType(ProtoPType ptype)
         {
-            Add(member.Group, member.Type);
+            Add(ptype.Group, ptype.Type);
         }
 
         private void Add(GroupDef? group, TypeDef? type)
@@ -306,9 +306,16 @@ internal static class CppWriter
             Code += newName;
         }
 
-        public void VisitPType(ProtoPType member)
+        public void VisitPType(ProtoPType ptype)
         {
-            Code += member.Type?.Name;
+            if (ptype.Group != null)
+            {
+                Code += ptype.Group.Name;
+            }
+            else
+            {
+                Code += ptype.Type?.Name;
+            }
         }
 
         public string Code { get; private set; } = "";
@@ -328,7 +335,14 @@ internal static class CppWriter
 
         public void VisitPtype(ParamPType ptype)
         {
-            Code += ptype.Type?.Name;
+            if (ptype.Group != null)
+            {
+                Code += ptype.Group.Name;
+            }
+            else
+            {
+                Code += ptype.Type?.Name;
+            }
         }
 
         public void VisitApiEntry(ParamApiEntry entry)

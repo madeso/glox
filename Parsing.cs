@@ -128,7 +128,7 @@ interface IProtoVisitor
 {
     void VisitText(ProtoText member);
     void VisitName(ProtoName member);
-    void VisitPType(ProtoPType member);
+    void VisitPType(ProtoPType ptype);
 }
 
 interface IProto
@@ -450,7 +450,7 @@ internal static class CodeExtractor
         public void VisitText(ProtoText member) {}
         public void VisitName(ProtoName member) {}
 
-        public void VisitPType(ProtoPType member) => Ptypes.Add(member);
+        public void VisitPType(ProtoPType ptype) => Ptypes.Add(ptype);
     }
 
     // -----
@@ -481,7 +481,7 @@ internal static class CodeExtractor
 
         public void VisitName(ProtoName member) => Names.Add(member.Name);
         public void VisitText(ProtoText member) {}
-        public void VisitPType(ProtoPType member) {}
+        public void VisitPType(ProtoPType ptype) {}
 
         public void VisitName(ParamName name) => Names.Add(name.Name);
         public void VisitText(ParamText text) {}

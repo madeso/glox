@@ -175,11 +175,11 @@ internal static class HtmlWriter
             Code += MakeBold(Escape(name.Name));
         }
 
-        public void VisitPType(ProtoPType member)
+        public void VisitPType(ProtoPType ptype)
         {
-            if(member.Type != null)
+            if(ptype.Type != null)
             {
-                Code += LinkToType(member.Type);
+                Code += LinkToType(ptype.Type);
             }
             else
             {
