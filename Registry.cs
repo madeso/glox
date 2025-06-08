@@ -113,13 +113,14 @@ internal sealed class Klass(string name)
     }
 }
 
-internal sealed class TypeDef(Location? location, string name, string? requiresRef, string? comment, string? apiEntry, IEnumerable<ITypeCode> codeBlock)
+internal sealed class TypeDef(Location? location, string name, string? requiresRef, string? comment, string? apiEntry, IEnumerable<ITypeCode> codeBlock, bool gotAttributeFromName)
 {
     internal string Name { get; } = name;
     internal TypeDef? Requires { get; private set; } = null;
     internal string? Comment { get; } = comment;
     internal string? ApiEntry { get; } = apiEntry;
     internal IEnumerable<ITypeCode> CodeBlock { get; } = codeBlock;
+    internal bool GotAttributeFromName { get; } = gotAttributeFromName;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -136,7 +137,7 @@ internal sealed class TypeDef(Location? location, string name, string? requiresR
 
     internal static TypeDef Null()
     {
-        return new TypeDef(null, "<null>", null, null, null, []);
+        return new TypeDef(null, "<null>", null, null, null, [], false);
     }
 }
 
@@ -516,7 +517,8 @@ internal static class Parser
         
         var body = CodeParser.ParseTypeCode(el);
 
-        var name = CodeExtractor.ExtractNameFromTypeBlock(body) ?? el.ReadAttribute("name");
+        var attributeName = el.ReadAttribute("name");
+        var name = CodeExtractor.ExtractNameFromTypeBlock(body) ?? attributeName;
 
         if (name == null)
         {
@@ -529,7 +531,8 @@ internal static class Parser
             requiresRef: requires,
             comment: api,
             apiEntry: comment,
-            codeBlock: body
+            codeBlock: body,
+            gotAttributeFromName: attributeName != null
         );
     }
 
