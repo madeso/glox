@@ -113,7 +113,7 @@ internal sealed class Klass(string name)
     }
 }
 
-internal sealed class TypeDef(Location? location, string name, string? requiresRef, string? comment, string? apiEntry, IEnumerable<ITypeCode> codeBlock, bool gotAttributeFromName)
+internal sealed class TypeDef(Location? location, int index, string name, string? requiresRef, string? comment, string? apiEntry, IEnumerable<ITypeCode> codeBlock, bool gotAttributeFromName)
 {
     internal string Name { get; } = name;
     internal TypeDef? Requires { get; private set; } = null;
@@ -121,6 +121,7 @@ internal sealed class TypeDef(Location? location, string name, string? requiresR
     internal string? ApiEntry { get; } = apiEntry;
     internal IEnumerable<ITypeCode> CodeBlock { get; } = codeBlock;
     internal bool GotAttributeFromName { get; } = gotAttributeFromName;
+    internal int DeclarationIndex { get; } = index;
 
     internal void Resolve(Registry registry, Level level)
     {
@@ -137,7 +138,7 @@ internal sealed class TypeDef(Location? location, string name, string? requiresR
 
     internal static TypeDef Null()
     {
-        return new TypeDef(null, "<null>", null, null, null, [], false);
+        return new TypeDef(null, -1, "<null>", null, null, null, [], false);
     }
 }
 
@@ -509,7 +510,7 @@ internal sealed class InterfaceType(Location location, string typeRef, string? c
 
 internal static class Parser
 {
-    private static TypeDef ParseTypeDef(El el)
+    private static TypeDef ParseTypeDef(El el, int index)
     {
         var requires = el.ReadAttribute("requires");
         var api = el.ReadAttribute("api");
@@ -527,6 +528,7 @@ internal static class Parser
         }
         return new TypeDef(
             el.Location,
+            index,
             name: name,
             requiresRef: requires,
             comment: api,

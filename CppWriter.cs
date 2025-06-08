@@ -40,7 +40,7 @@ internal static class CppWriter
         var typeFinder = new TypeFinder();
         sel.Commands.SelectMany(c => c.Params).SelectMany(d => d.ParamBody).Visit(typeFinder);
         sel.Commands.SelectMany(c => c.Prototype).Visit(typeFinder);
-        var types = typeFinder.Types.ToImmutableArray();
+        var types = typeFinder.Types.OrderBy(t => t.DeclarationIndex).ToImmutableArray();
 
         // todo(Gustav): fix command prefixes
         // todo(Gustav): group enums values into groups
