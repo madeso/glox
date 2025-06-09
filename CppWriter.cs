@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.Windows.Markup;
 using Glox.Registry;
 using Spectre.Console;
 
@@ -70,8 +71,17 @@ internal static class CppWriter
             }
         }
 
-        // todo(Gustav): fix command prefixes
         // todo(Gustav): replace naked types with classes
+        var klassFinder = new KlassFinder();
+        VisitParam(sel, klassFinder);
+        VisitPrototype(sel, klassFinder);
+        foreach (var m in klassFinder.Klasses.Select(x => new { Klass = x.Key, Types = x.Value }).Where(x => x.Types.Count > 1))
+        {
+            var tooManyKlasses = string.Join(", ", m.Types.Select(x => x.Name));
+            AnsiConsole.MarkupLineInterpolated($"{m.Klass.Name} has many classes: {tooManyKlasses}");
+        }
+        var klasses = klassFinder.Klasses.Select(x => new { Klass = x.Key, Type = x.Value.FirstOrDefault()}).ToImmutableArray();
+
         // todo(Gustav: figure out how to use kinds... replacement function/factories
         // todo(Gustav): multiple enum values?
 
@@ -123,7 +133,30 @@ internal static class CppWriter
                 }
                 code.Header($"\t{s}{name} = {ev.Value} //< Original name was {ev.Name}");
             }
-            code.Header("}");
+            code.Header("};");
+        }
+        code.Header("");
+        code.Header("");
+
+        code.Header("// classes");
+        foreach (var g in klasses)
+        {
+            var values = "{ NULL = 0 }";
+            if (g.Type != null)
+            {
+                if (g.Type.Name == "GLuint")
+                {
+                    code.Header($"enum class {GetCodeName(g.Klass)} : {g.Type.Name} {values};");
+                }
+                else
+                {
+                    code.Header($"struct {GetCodeName(g.Klass)} {{ {g.Type.Name} data; }};");
+                }
+            }
+            else
+            {
+                code.Header($"enum class {GetCodeName(g.Klass)} {values};");
+            }
         }
         code.Header("");
         code.Header("");
@@ -185,6 +218,44 @@ internal static class CppWriter
         foreach (var t in types)
         {
             code.Header(t.CodeBlock.Visit(new TypeRenderer()).Code);
+        }
+    }
+
+    private sealed class KlassFinder : IProtoVisitor, IParamVisitor
+    {
+        internal Dictionary<Klass, HashSet<TypeDef>> Klasses { get; } = new();
+
+        public void VisitText(ProtoText member) { }
+        public void VisitName(ProtoName member) { }
+        public void VisitPType(ProtoPType ptype)
+        {
+            Add(ptype.Klass, ptype.Type);
+        }
+
+        private void Add(Klass? kind, TypeDef? type)
+        {
+            if (kind == null) return;
+            var hs = Get(kind);
+            if (type != null)
+            {
+                hs.Add(type);
+            }
+        }
+
+        public void VisitText(ParamText text) { }
+        public void VisitName(ParamName name) { }
+        public void VisitApiEntry(ParamApiEntry entry) { }
+        public void VisitPtype(ParamPType member)
+        {
+            Add(member.Klass, member.Type);
+        }
+
+        private HashSet<TypeDef> Get(Klass kind)
+        {
+            if (Klasses.TryGetValue(kind, out var r)) return r;
+            r = [];
+            Klasses[kind] = r;
+            return r;
         }
     }
 
@@ -312,6 +383,10 @@ internal static class CppWriter
             {
                 Code += ptype.Group.Name;
             }
+            else if (ptype.Klass != null)
+            {
+                Code += CppWriter.GetCodeName(ptype.Klass);
+            }
             else
             {
                 Code += ptype.Type?.Name;
@@ -319,6 +394,13 @@ internal static class CppWriter
         }
 
         public string Code { get; private set; } = "";
+    }
+
+    private static string GetCodeName(Klass klass)
+    {
+        var r = klass.Name.Replace(' ', '_');
+        if (string.IsNullOrEmpty(r)) return r;
+        return char.ToUpperInvariant(r[0]) + r.Substring(1);
     }
 
     private sealed class ParamRenderer : IParamVisitor
@@ -338,6 +420,10 @@ internal static class CppWriter
             if (ptype.Group != null)
             {
                 Code += ptype.Group.Name;
+            }
+            else if (ptype.Klass != null)
+            {
+                Code += CppWriter.GetCodeName(ptype.Klass);
             }
             else
             {
