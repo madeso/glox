@@ -84,6 +84,7 @@ internal static class CppWriter
 
         // todo(Gustav: figure out how to use kinds... replacement function/factories
         // todo(Gustav): multiple enum values?
+        // todo(Gustav): add automatic enum for GLbool and GL_TRUE/GL_FALSE
 
         AnsiConsole.WriteLine("Typing code...");
         SimpleWriter code = new();
