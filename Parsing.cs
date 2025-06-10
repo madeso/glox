@@ -84,6 +84,11 @@ internal sealed class ParamPType(CommandDef ownerCommand, Location loc, string? 
             }
         }
 
+        if (GroupRef == null && typeRef == Registry.BOOL_TYPE)
+        {
+            GroupRef = Registry.BOOL_GROUP;
+        }
+
         if (GroupRef != null)
         {
             Group = registry.GetGroup(GroupRef);
@@ -193,6 +198,11 @@ internal sealed class ProtoPType(CommandDef ownerCommand, Location location, str
         }
 
         Type = found;
+
+        if (GroupRef == null && typeRef == Registry.BOOL_TYPE)
+        {
+            GroupRef = Registry.BOOL_GROUP;
+        }
 
         if (KlassRef != null)
         {

@@ -18,6 +18,7 @@ namespace Glox.Registry;
 
 internal enum Level
 {
+    ExpandBooleans,
     ResolveGroupAndKlassRefs,
     ResolveInterface
 }
@@ -29,15 +30,18 @@ internal enum EnumKind
 }
 
 internal sealed class Registry(
-    ImmutableArray<TypeDef> types,
-    ImmutableArray<KindDef> kinds,
-    ImmutableArray<GroupDef> groups,
+    IEnumerable<TypeDef> types,
+    IEnumerable<KindDef> kinds,
+    IEnumerable<GroupDef> groups,
     ImmutableArray<EnumBlock> enumBlocks,
-    ImmutableArray<CommandDef> commands,
+    IEnumerable<CommandDef> commands,
     ImmutableArray<FeatureDef> features,
     ImmutableArray<ExtensionDef> extensions,
     ImmutableArray<string> comments)
 {
+    internal const string BOOL_TYPE = "GLboolean";
+    internal const string BOOL_GROUP = "Bool";
+
     internal ImmutableDictionary<string, TypeDef> TypeFromName { get; } = types.ToImmutableDictionary(x => x.Name, x => x);
     internal Dictionary<string, KindDef> KindFromName { get; } = kinds.ToDictionary(x => x.Name, x => x);
     internal Dictionary<string, GroupDef> GroupFromName { get; } = groups.ToDictionary(x => x.Name, x => x);
@@ -187,6 +191,14 @@ internal sealed class EnumBlock(
         foreach (var e in Enums) e.Resolve(registry, level);
         foreach (var u in Unused) u.Resolve(registry, level);
 
+        if (level == Level.ExpandBooleans)
+        {
+            foreach (var e in Enums.Where(x => x.Name is "GL_TRUE" or "GL_FALSE"))
+            {
+                e.GroupRefs.Add(Registry.BOOL_GROUP);
+            }
+        }
+
         if (level == Level.ResolveGroupAndKlassRefs)
         {
             if (GroupRef != null)
@@ -204,7 +216,7 @@ internal sealed class EnumValue(
     internal string? Value { get; } = value;
     internal NamedApi? Api { get; } = api;
     internal string? Type { get; } = type;
-    internal ImmutableArray<string> GroupRefs { get; } = groupRefs;
+    internal List<string> GroupRefs { get; } = groupRefs.ToList();
     internal ImmutableArray<GroupDef> Groups { get; private set; } = [];
     internal string? Alias { get; } = alias;
     internal string? Comment { get; } = comment;
@@ -943,42 +955,43 @@ internal static class Parser
             .SelectMany(e => e.ReadInnerText()).ToImmutableArray();
 
         var types = root.ElementsNamed("types")
-            .SelectMany(t => t.ElementsNamed("type").Select(ParseTypeDef)).ToImmutableArray();
+            .SelectMany(t => t.ElementsNamed("type").Select(ParseTypeDef));
 
         var kinds = root.ElementsNamed("kinds")
-            .SelectMany(k => k.ElementsNamed("kind").Select(ParseKindDef)).ToImmutableArray();
+            .SelectMany(k => k.ElementsNamed("kind").Select(ParseKindDef));
 
         var groups = root.ElementsNamed("groups")
-            .SelectMany(g => g.ElementsNamed("group").Select(ParseGroupDef)).ToImmutableArray();
+            .SelectMany(g => g.ElementsNamed("group").Select(ParseGroupDef));
 
         var enums = root.ElementsNamed("enums")
-            .Select(ParseEnumsType).ToImmutableArray();
+            .Select(ParseEnumsType);
 
         var commands = root.ElementsNamed("commands")
             .SelectMany(c =>
             {
                 var ns = c.ReadAttribute("namespace");
                 return c.ElementsNamed("command").Select(cmd => ParseCommandDef(cmd, ns));
-            }).ToImmutableArray();
+            });
 
         var features = root.ElementsNamed("feature")
-            .Select(ParseFeatureDef).ToImmutableArray();
+            .Select(ParseFeatureDef);
 
         var extensions = root.ElementsNamed("extensions")
-            .SelectMany(e => e.ElementsNamed("extension").Select(ParseExtensionDef)).ToImmutableArray();
+            .SelectMany(e => e.ElementsNamed("extension").Select(ParseExtensionDef));
 
         var reg = new Registry(
             types: types,
             kinds: kinds,
-            groups: groups,
-            enumBlocks: enums,
+            groups: groups.Concat([new GroupDef(Registry.BOOL_GROUP, [])]),
+            enumBlocks: enums.ToImmutableArray(),
             commands: commands,
-            features: features,
-            extensions: extensions,
-            comments: comments
+            features: features.ToImmutableArray(),
+            extensions: extensions.ToImmutableArray(),
+            comments: comments.ToImmutableArray()
         );
 
         AnsiConsole.WriteLine("Resolving references...");
+        reg.Resolve(Level.ExpandBooleans);
         reg.Resolve(Level.ResolveGroupAndKlassRefs);
         reg.Resolve(Level.ResolveInterface);
 
