@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Windows.Markup;
+using System.Xml.Linq;
 using Glox.Registry;
 using Spectre.Console;
 
@@ -172,10 +173,32 @@ internal static class CppWriter
         code.Header("// Commands");
         foreach (var cmd in sel.Commands)
         {
-            var rv = cmd.Prototype.Visit(new ReturnValueRenderer(RemovePrefixes(cmd.Name, "gl"))).Code;
-            var pms = cmd.Params.Select(c => c.ParamBody.Visit(new ParamRenderer()).Code);
-            var pb = string.Join(", ", pms);
-            code.Header($"{rv}({pb});");
+            var newFunctionName = RemovePrefixes(cmd.Name, "gl");
+            var prototype = cmd.Prototype.Visit(new PrototypeRenderer(newFunctionName)).Code;
+            var retType = cmd.Prototype.Visit(new ReturnTypeRenderer(newFunctionName)).Code.Trim();
+            var paramBody = string.Join(", ", cmd.Params.Select(c => c.ParamBody.Visit(new ParamRenderer()).Code));
+            var argBody = string.Join(", ", cmd.Params.Select(RenderArg));
+            var call = $"::{cmd.Name}({argBody})";
+
+            code.Header($"{prototype}({paramBody});");
+
+            code.Source($"{prototype}({paramBody})");
+            code.Source("{");
+            if (CastThis(cmd.ReturnValue?.Klass, cmd.ReturnValue?.Group))
+            {
+                code.Source($"\treturn static_cast<{retType}>({call});");
+            }
+            else if(retType.Trim() != "void")
+            {
+                code.Source($"\treturn {call};");
+            }
+            else
+            {
+                code.Source($"\t{call};");
+            }
+            code.Source("}");
+            code.Source("");
+            code.Source("");
         }
 
         code.Add("}");
@@ -185,6 +208,24 @@ internal static class CppWriter
         WritePage(folder, "gloc.cc", code.SourceLines);
         WritePage(folder, "gloc.hh", code.HeaderLines);
     }
+
+    private static string RenderArg(ParamDef arg)
+    {
+        var ptype = arg.Ptype;
+        var name = arg.Name;
+
+        if (CastThis(ptype?.Klass, ptype?.Group))
+        {
+            var ty = arg.ParamBody.Visit(new ParamTypeRenderer()).Code.Trim();
+            return $"static_cast<{ty}>({name})";
+        }
+        else
+        {
+            return name;
+        }
+    }
+
+    private static bool CastThis(Klass? klass, GroupDef? group) => klass != null || group != null;
 
     private static string RemovePrefixes(string s, params string[] prefixes)
     {
@@ -365,7 +406,37 @@ internal static class CppWriter
         }
     }
 
-    private sealed class ReturnValueRenderer(string newName) : IProtoVisitor
+    private sealed class ReturnTypeRenderer(string newName) : IProtoVisitor
+    {
+        public void VisitText(ProtoText member)
+        {
+            Code += member.Value;
+        }
+
+        public void VisitName(ProtoName member)
+        {
+        }
+
+        public void VisitPType(ProtoPType ptype)
+        {
+            if (ptype.Group != null)
+            {
+                Code += ptype.Group.Name;
+            }
+            else if (ptype.Klass != null)
+            {
+                Code += CppWriter.GetCodeName(ptype.Klass);
+            }
+            else
+            {
+                Code += ptype.Type?.Name;
+            }
+        }
+
+        public string Code { get; private set; } = "";
+    }
+
+    private sealed class PrototypeRenderer(string newName) : IProtoVisitor
     {
         public void VisitText(ProtoText member)
         {
@@ -401,6 +472,29 @@ internal static class CppWriter
         var r = klass.Name.Replace(' ', '_');
         if (string.IsNullOrEmpty(r)) return r;
         return char.ToUpperInvariant(r[0]) + r.Substring(1);
+    }
+
+    private sealed class ParamTypeRenderer : IParamVisitor
+    {
+        public void VisitText(ParamText text)
+        {
+            Code += text.Value;
+        }
+
+        public void VisitName(ParamName name)
+        {
+        }
+
+        public void VisitPtype(ParamPType ptype)
+        {
+            Code += ptype.Type?.Name;
+        }
+
+        public void VisitApiEntry(ParamApiEntry entry)
+        {
+        }
+
+        public string Code { get; private set; } = "";
     }
 
     private sealed class ParamRenderer : IParamVisitor
